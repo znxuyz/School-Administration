@@ -92,6 +92,17 @@ function documentsOut(plan) {
     .map((s) => ({ title: s.title, unit: s.location }));
 }
 
+/** 下一個要處理的步驟:第一個還沒完成的 */
+function nextStep(plan) {
+  return (plan.steps || []).find((s) => s.status !== "done") || null;
+}
+
+/** 這個步驟距離期限還有幾天;null = 沒期限或已完成 */
+function daysLeft(step, today = todayStr()) {
+  if (!step.due || step.status === "done") return null;
+  return daysBetween(today, step.due);
+}
+
 /** 這個計畫目前有文件停在哪些單位(篩選用,含舊格式的計畫層級位置) */
 function unitsOf(plan) {
   const units = documentsOut(plan).map((d) => d.unit);
@@ -339,6 +350,16 @@ for (const [key, sel] of Object.entries(FILTER_FIELDS)) {
     renderDashboard();
   });
 }
+// 點統計磚等同於切換狀態篩選;再點一次取消
+$("#stat-row").addEventListener("click", (e) => {
+  const tile = e.target.closest("[data-stat]");
+  if (!tile) return;
+  const key = tile.dataset.stat;
+  state.filters.status = state.filters.status === key ? "" : key;
+  $("#f-status").value = state.filters.status;
+  renderDashboard();
+});
+
 $("#f-reset").addEventListener("click", () => {
   state.filters = {
     year: String(currentAcademicYear()),
@@ -370,20 +391,22 @@ function renderStats(plans) {
   plans.forEach((p) => { counts[statusOf(p)]++; });
 
   const tiles = [
-    { label: "計畫總數", value: counts.total, color: "var(--text-muted)" },
-    { label: "進行中", value: counts.active, color: STATUS_META.active.color },
-    { label: "逾期", value: counts.overdue, color: STATUS_META.overdue.color },
-    { label: "待更新", value: counts.stale, color: STATUS_META.stale.color },
-    { label: "已完成", value: counts.done, color: STATUS_META.done.color }
+    { key: "", label: "計畫總數", value: counts.total, color: "var(--text-muted)" },
+    { key: "active", label: "進行中", value: counts.active, color: STATUS_META.active.color },
+    { key: "overdue", label: "逾期", value: counts.overdue, color: STATUS_META.overdue.color },
+    { key: "stale", label: "待更新", value: counts.stale, color: STATUS_META.stale.color },
+    { key: "done", label: "已完成", value: counts.done, color: STATUS_META.done.color }
   ];
 
+  // 統計磚同時是篩選捷徑:點「逾期」就只看逾期的計畫
   $("#stat-row").innerHTML = tiles.map((t) => `
-    <div class="stat">
-      <div class="stat-label">
+    <button type="button" class="stat" data-stat="${esc(t.key)}"
+            aria-pressed="${state.filters.status === t.key}">
+      <span class="stat-label">
         <span class="dot" style="background:${t.color}"></span>${esc(t.label)}
-      </div>
-      <div class="stat-value">${t.value}</div>
-    </div>`).join("");
+      </span>
+      <span class="stat-value">${t.value}</span>
+    </button>`).join("");
 }
 
 /** 四階段進度條 */
@@ -435,9 +458,21 @@ function stepsHtml(plan, editable) {
       <div class="stage-group">
         <div class="stage-group-head">${esc(st.label)}階段<span class="muted small">・${esc(st.hint)}</span></div>
         ${rows.map((s) => {
-          const overdue = s.due && s.status !== "done" && s.due < today;
+          // 期限提示:逾期標紅、七天內標黃,讓老師不用自己算天數
+          const left = daysLeft(s, today);
+          let dueHtml = "";
+          if (s.due) {
+            let tail = "", cls = "";
+            if (left === null) tail = "";
+            else if (left < 0) { tail = "(已逾期)"; cls = "overdue"; }
+            else if (left === 0) { tail = "(今天到期)"; cls = "due-soon"; }
+            else if (left <= 7) { tail = `(還有 ${left} 天)`; cls = "due-soon"; }
+            dueHtml = `<span class="${cls}">期限 ${esc(s.due)}${tail}</span>`;
+          }
+
           const sub = [
-            s.due ? `<span class="${overdue ? "overdue" : ""}">期限 ${esc(s.due)}${overdue ? "(已逾期)" : ""}</span>` : "",
+            dueHtml,
+            s.status === "done" && s.doneAt ? `<span class="done-at">✓ ${esc(s.doneAt)} 完成</span>` : "",
             s.note ? `<span>${esc(s.note)}</span>` : ""
           ].filter(Boolean).join("");
 
@@ -509,8 +544,15 @@ function planCard(plan, { editable }) {
   const out = documentsOut(plan);
   const legacy = plan.location && plan.location !== DEFAULT_UNIT && !out.length
     ? `<span class="loc-chip">📄 公文在:<b>${esc(plan.location)}</b></span>` : "";
-  const outRow = (out.length || legacy)
+  // 下一步:一眼看出現在該做什麼,不用展開明細
+  const nxt = nextStep(plan);
+  const nextChip = nxt
+    ? `<span class="next-chip"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.title)}</b></span>`
+    : ((plan.steps || []).length ? `<span class="next-chip done"><span aria-hidden="true">✓</span>全部步驟已完成</span>` : "");
+
+  const outRow = (nextChip || out.length || legacy)
     ? `<div class="loc-row">
+         ${nextChip}
          ${out.map((d) => `<span class="loc-chip"><span aria-hidden="true">📄</span>${esc(d.title)} <span aria-hidden="true">→</span> <b>${esc(d.unit)}</b></span>`).join("")}
          ${legacy}
        </div>`
@@ -628,8 +670,17 @@ document.addEventListener("change", async (e) => {
 
   const steps = (plan.steps || []).map((s, i) => {
     if (i !== idx) return s;
-    return isLoc ? { ...s, location: sel.value } : { ...s, status: sel.value };
+    if (isLoc) return { ...s, location: sel.value };
+    // 標記完成時記下完成日期,取消完成就清掉
+    return { ...s, status: sel.value, doneAt: sel.value === "done" ? todayStr() : "" };
   });
+
+  // 一個步驟完成後,自動把後面第一個「未開始」的步驟接成「進行中」,
+  // 老師只要按完成,下一步會自己亮起來。
+  if (!isLoc && sel.value === "done") {
+    const next = steps.findIndex((s, i) => i > idx && s.status === "todo");
+    if (next !== -1) steps[next] = { ...steps[next], status: "doing" };
+  }
 
   const patch = { steps, updatedAt: serverTimestamp() };
 
@@ -681,7 +732,16 @@ function renderStepEditor() {
         ${Object.entries(STEP_LABEL).map(([v, l]) =>
           `<option value="${v}"${s.status === v ? " selected" : ""}>${l}</option>`).join("")}
       </select>
-      <button type="button" class="btn btn-sm btn-danger" data-del="${i}">刪除</button>
+      <div class="row-tools">
+        <button type="button" class="icon-btn" data-move="up" data-i="${i}"
+                title="上移" aria-label="上移這個步驟"${i === 0 ? " disabled" : ""}>↑</button>
+        <button type="button" class="icon-btn" data-move="down" data-i="${i}"
+                title="下移" aria-label="下移這個步驟"${i === draftSteps.length - 1 ? " disabled" : ""}>↓</button>
+        <button type="button" class="icon-btn" data-insert="${i}"
+                title="在下方插入一個步驟" aria-label="在下方插入一個步驟">＋</button>
+        <button type="button" class="icon-btn icon-danger" data-del="${i}"
+                title="刪除" aria-label="刪除這個步驟">✕</button>
+      </div>
     </div>`).join("") ||
     `<p class="muted small">還沒有步驟。可以在上面挑一個範本,或按「＋ 新增步驟」自己加。</p>`;
 }
@@ -702,24 +762,61 @@ $("#steps-editor").addEventListener("change", (e) => {
   if (e.target.dataset.k === "stage") renderStepEditor();
 });
 
+const blankStep = (stage) => ({ title: "", due: "", status: "todo", note: "", stage });
+
+/** 把焦點放到第 n 列的名稱欄位,插入後可以直接打字 */
+function focusStepRow(n) {
+  $(`#steps-editor .step-edit[data-i="${n}"] input[data-k="title"]`)?.focus();
+}
+
 $("#steps-editor").addEventListener("click", (e) => {
   const del = e.target.closest("[data-del]");
-  if (!del) return;
-  draftSteps.splice(Number(del.dataset.del), 1);
+  const ins = e.target.closest("[data-insert]");
+  const mv = e.target.closest("[data-move]");
+  if (!del && !ins && !mv) return;
   draftTouched = true;
+
+  if (del) {
+    draftSteps.splice(Number(del.dataset.del), 1);
+    renderStepEditor();
+    return;
+  }
+
+  if (ins) {
+    // 插在這一列的下方,並沿用同一個階段
+    const i = Number(ins.dataset.insert);
+    draftSteps.splice(i + 1, 0, blankStep(stageOf(draftSteps[i])));
+    renderStepEditor();
+    focusStepRow(i + 1);
+    return;
+  }
+
+  const i = Number(mv.dataset.i);
+  const j = mv.dataset.move === "up" ? i - 1 : i + 1;
+  if (j < 0 || j >= draftSteps.length) return;
+
+  // 跨階段往上/往下移時,順勢改成鄰居的階段,
+  // 否則存檔時會依階段重新排序,看起來像沒有移動。
+  const moved = { ...draftSteps[i], stage: stageOf(draftSteps[j]) };
+  draftSteps[i] = draftSteps[j];
+  draftSteps[j] = moved;
   renderStepEditor();
+  focusStepRow(j);
 });
 
 $("#btn-add-step").addEventListener("click", () => {
   const last = draftSteps[draftSteps.length - 1];
-  draftSteps.push({ title: "", due: "", status: "todo", note: "", stage: last ? stageOf(last) : "plan" });
+  draftSteps.push(blankStep(last ? stageOf(last) : "plan"));
   draftTouched = true;
   renderStepEditor();
-  $("#steps-editor").lastElementChild?.querySelector('input[data-k="title"]')?.focus();
+  focusStepRow(draftSteps.length - 1);
 });
 
 function applyTemplate(tpl) {
-  draftSteps = tpl.steps.map((s) => ({ ...s, due: "", status: "todo", note: "" }));
+  // 第一個步驟預設就是「進行中」,後面全部「未開始」
+  draftSteps = tpl.steps.map((s, i) => ({
+    ...s, due: "", note: "", status: i === 0 ? "doing" : "todo"
+  }));
   draftTouched = false;          // 範本原封不動,還不算使用者的心血
   lastTemplateId = tpl.id;
   $("#template-hint").textContent = tpl.desc;
@@ -786,7 +883,10 @@ formPlan.addEventListener("submit", async (e) => {
       stage: stageOf(s),
       due: s.due || "",
       status: ["todo", "doing", "done"].includes(s.status) ? s.status : "todo",
-      note: (s.note || "").trim()
+      note: (s.note || "").trim(),
+      // 這兩個欄位是在卡片上維護的,編輯計畫時要原封帶回去,不能被洗掉
+      location: s.location || "",
+      doneAt: s.doneAt || ""
     }))
     .sort((a, b) => STAGE_IDS.indexOf(a.stage) - STAGE_IDS.indexOf(b.stage));
 

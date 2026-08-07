@@ -104,13 +104,8 @@ export const TEMPLATES = [
     steps: [
       { stage: "plan",    title: "計畫書撰寫" },
       { stage: "plan",    title: "經費概算表" },
-      { stage: "plan",    title: "簽陳校長核可" },
-      { stage: "plan",    title: "計畫函報上級" },
       { stage: "approve", title: "上級核定函收文" },
-      { stage: "approve", title: "核定金額確認" },
       { stage: "approve", title: "呈送領據" },
-      { stage: "approve", title: "經費撥入確認" },
-      { stage: "execute", title: "採購/請購作業" },
       { stage: "execute", title: "活動辦理" },
       { stage: "execute", title: "成果照片蒐集" },
       { stage: "close",   title: "核銷資料彙整" },

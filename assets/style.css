@@ -175,16 +175,23 @@ textarea { resize: vertical; }
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 .stat {
+  display: block; width: 100%; text-align: left;
+  font: inherit; cursor: pointer;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
+  color: var(--text-primary);
+}
+.stat:hover { border-color: var(--text-muted); }
+.stat[aria-pressed="true"] {
+  border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
 }
 .stat-label {
   display: flex; align-items: center; gap: 6px;
   font-size: .85rem; color: var(--text-secondary);
 }
-.stat-value { font-size: 1.9rem; font-weight: 600; letter-spacing: -.02em; }
+.stat-value { display: block; font-size: 1.9rem; font-weight: 600; letter-spacing: -.02em; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 
 /* ---------- 篩選列 ---------- */
@@ -277,6 +284,15 @@ textarea { resize: vertical; }
 }
 .loc-chip b { color: var(--text-primary); }
 
+.next-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent); color: #fff;
+  border-radius: 999px; padding: 5px 13px;
+  font-size: .86rem;
+}
+.next-chip b { font-weight: 600; }
+.next-chip.done { background: var(--good-track); color: var(--text-primary); }
+
 .away-tag {
   display: inline-flex; align-items: center; gap: 4px;
   margin-left: 8px; padding: 1px 8px; border-radius: 999px;
@@ -345,6 +361,11 @@ textarea { resize: vertical; }
   display: flex; flex-wrap: wrap; gap: 3px 10px;
 }
 .step-sub .overdue { color: var(--status-critical); font-weight: 600; }
+.step-sub .due-soon { color: var(--text-primary); font-weight: 600; }
+.step-sub .due-soon::before {
+  content: "◷"; margin-right: 3px; color: var(--status-warning);
+}
+.step-sub .done-at { color: var(--text-muted); }
 .step-status { width: auto; min-width: 106px; flex: none; font-size: .85rem; padding: 4px 8px; }
 .step-marker { font-size: .95rem; line-height: 1.6; flex: none; width: 1.2em; text-align: center; }
 
@@ -381,7 +402,7 @@ textarea { resize: vertical; }
 /* ---------- 對話框 ---------- */
 .dlg {
   border: 1px solid var(--border); border-radius: 12px;
-  padding: 0 24px 0; width: min(680px, calc(100vw - 32px));
+  padding: 0 24px 0; width: min(820px, calc(100vw - 32px));
   max-height: 88vh;                  /* 步驟多的時候對話框自己捲動,不要溢出視窗 */
   background: var(--surface-1); color: var(--text-primary);
   box-shadow: 0 8px 40px rgba(0, 0, 0, .18);
@@ -406,12 +427,24 @@ textarea { resize: vertical; }
 .steps-head h4 { margin: 0; }
 .steps-editor { display: flex; flex-direction: column; gap: 8px; }
 .step-edit {
-  display: grid; gap: 8px; align-items: center;
-  grid-template-columns: 92px 1fr 145px 112px auto;
+  display: grid; gap: 6px; align-items: center;
+  grid-template-columns: 84px minmax(150px, 1fr) 140px 104px auto;
 }
 .step-edit input, .step-edit select { margin: 0; }
 
 .hint { color: var(--text-muted); font-size: .8rem; margin-top: 3px; }
+
+/* 步驟列的上移/下移/插入/刪除 */
+.row-tools { display: flex; gap: 2px; }
+.icon-btn {
+  font: inherit; font-size: .9rem; line-height: 1; cursor: pointer;
+  width: 30px; height: 32px; padding: 0;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface-1); color: var(--text-secondary);
+}
+.icon-btn:hover:not(:disabled) { border-color: var(--text-muted); color: var(--text-primary); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.icon-danger:hover:not(:disabled) { border-color: var(--status-critical); color: var(--status-critical); }
 
 .status-line {
   font-size: .88rem; padding: 8px 12px; border-radius: 8px; margin: 12px 0 0;

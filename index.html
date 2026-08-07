@@ -180,12 +180,20 @@
       <label class="field">
         <span>執行結束日期</span>
         <input name="endDate" type="date">
+        <small class="hint" id="settlement-hint"></small>
       </label>
       <label class="field">
         <span>核定經費(元)</span>
         <input name="budget" type="number" min="0" step="1" placeholder="沒有經費可留空">
       </label>
     </div>
+
+    <label class="field">
+      <span>掃描檔雲端連結</span>
+      <input name="driveUrl" type="url" maxlength="500"
+             placeholder="https://drive.google.com/... (紙本跑完掃描後貼上)">
+      <small class="hint">貼上學校雲端資料夾或檔案的網址,卡片上就會出現可以直接點開的連結。</small>
+    </label>
 
     <label class="field">
       <span>備註說明</span>

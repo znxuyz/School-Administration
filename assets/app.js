@@ -11,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 import {
-  firebaseConfig, DEPARTMENTS, STALE_DAYS,
+  firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS,
   UNIT_GROUPS, ALL_UNITS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES
 } from "./config.js";
@@ -67,9 +67,27 @@ function daysBetween(a, b) {
 
 const money = (n) => Number(n).toLocaleString("zh-Hant-TW");
 
+/** 只放行 http/https 連結,避免 javascript: 之類的網址被塞進卡片 */
+function safeUrl(u) {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  try {
+    const url = new URL(s);
+    return (url.protocol === "http:" || url.protocol === "https:") ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 const TERM_LABEL = { "1": "上學期", "2": "下學期", "0": "全學年" };
-const STEP_LABEL = { todo: "未開始", doing: "進行中", done: "已完成" };
-const STEP_MARK = { todo: "○", doing: "◐", done: "●" };
+// na = 本次不適用(例如這次沒有剩餘款、沒有薪資支出),
+// 保留步驟但不列入進度、不算逾期,比直接刪掉更清楚。
+const STEP_LABEL = { todo: "未開始", doing: "進行中", done: "已完成", na: "本次不適用" };
+const STEP_MARK = { todo: "○", doing: "◐", done: "●", na: "—" };
+const STEP_STATUSES = Object.keys(STEP_LABEL);
+
+/** 本次要做的步驟(排除標記為不適用的) */
+const activeSteps = (plan) => (plan.steps || []).filter((s) => s.status !== "na");
 const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.id, s.label]));
 
 const STATUS_META = {
@@ -79,28 +97,72 @@ const STATUS_META = {
   done:    { label: "已完成", icon: "✓", cls: "badge-done",    color: "var(--status-good)" }
 };
 
-/** 舊資料相容:整體期限先看 endDate,沒有才回頭看早期的 dueDate */
+/** 舊資料相容:執行結束日先看 endDate,沒有才回頭看早期的 dueDate */
 const deadlineOf = (plan) => plan.endDate || plan.dueDate || "";
+
+/** YYYY-MM-DD 加上 n 天 */
+function addDays(ymd, n) {
+  if (!ymd) return "";
+  const d = new Date(ymd + "T00:00:00");
+  if (isNaN(d)) return "";
+  d.setDate(d.getDate() + n);
+  return todayStr(d);
+}
+
+/**
+ * 結算期限 = 執行結束日 + 寬限天數。
+ * 老師填的執行結束日不含送結算的時間,系統自動往後加。
+ */
+const settlementDueOf = (plan) => addDays(deadlineOf(plan), SETTLEMENT_GRACE_DAYS);
+
+/**
+ * 步驟實際要對照的期限:自己填的優先;
+ * 結案階段沒填的話,一律用計畫的結算期限。
+ */
+function effectiveDue(step, plan) {
+  if (step.due) return step.due;
+  return stageOf(step) === "close" ? settlementDueOf(plan) : "";
+}
 
 /**
  * 還在外面的文件:有指定所在單位、而且不是「承辦人手上」、也還沒完成的步驟。
  * 公文位置是掛在每一份文件(步驟)上的,不是整個計畫共用一個位置。
  */
 function documentsOut(plan) {
-  return (plan.steps || [])
+  const byUnit = new Map();
+  activeSteps(plan)
     .filter((s) => s.location && s.location !== DEFAULT_UNIT && s.status !== "done")
-    .map((s) => ({ title: s.title, unit: s.location }));
+    .forEach((s) => {
+      if (!byUnit.has(s.location)) byUnit.set(s.location, []);
+      byUnit.get(s.location).push(s.title);
+    });
+  // 同一個單位的多份文件收成一則,卡片才不會被一長串小標籤淹沒
+  return [...byUnit].map(([unit, titles]) => ({
+    unit,
+    title: titles.length === 1 ? titles[0] : `${titles[0]} 等 ${titles.length} 份`
+  }));
 }
 
-/** 下一個要處理的步驟:第一個還沒完成的 */
+/** 把同一階段內「與上一個一起送」的步驟合併成一批公文 */
+function groupBundles(rows) {
+  const out = [];
+  rows.forEach((s) => {
+    if (s.bundleWithPrev && out.length) out[out.length - 1].push(s);
+    else out.push([s]);
+  });
+  return out;
+}
+
+/** 下一個要處理的步驟:第一個還沒完成、也不是「本次不適用」的 */
 function nextStep(plan) {
-  return (plan.steps || []).find((s) => s.status !== "done") || null;
+  return activeSteps(plan).find((s) => s.status !== "done") || null;
 }
 
-/** 這個步驟距離期限還有幾天;null = 沒期限或已完成 */
-function daysLeft(step, today = todayStr()) {
-  if (!step.due || step.status === "done") return null;
-  return daysBetween(today, step.due);
+/** 這個步驟距離期限還有幾天;null = 沒期限、已完成或本次不適用 */
+function daysLeft(step, today = todayStr(), plan = {}) {
+  if (step.status === "done" || step.status === "na") return null;
+  const due = effectiveDue(step, plan);
+  return due ? daysBetween(today, due) : null;
 }
 
 /** 這個計畫目前有文件停在哪些單位(篩選用,含舊格式的計畫層級位置) */
@@ -113,7 +175,7 @@ function unitsOf(plan) {
 const stageOf = (step) => (STAGE_IDS.includes(step.stage) ? step.stage : "execute");
 
 function progressOf(plan) {
-  const steps = plan.steps || [];
+  const steps = activeSteps(plan);          // 不適用的步驟不列入分母
   const done = steps.filter((s) => s.status === "done").length;
   return { done, total: steps.length, pct: steps.length ? Math.round((done / steps.length) * 100) : 0 };
 }
@@ -121,7 +183,7 @@ function progressOf(plan) {
 /** 每個階段的完成度 */
 function stageProgress(plan) {
   return STAGES.map((st) => {
-    const steps = (plan.steps || []).filter((s) => stageOf(s) === st.id);
+    const steps = activeSteps(plan).filter((s) => stageOf(s) === st.id);
     const done = steps.filter((s) => s.status === "done").length;
     return { ...st, done, total: steps.length, complete: steps.length > 0 && done === steps.length };
   });
@@ -138,10 +200,12 @@ function statusOf(plan) {
   const { done, total } = progressOf(plan);
   if (total > 0 && done === total) return "done";
 
+  // 整體期限用「結算期限」(執行結束日 + 寬限期),
+  // 結案階段沒填期限的步驟也一律對照結算期限。
   const today = todayStr();
-  const deadlines = [deadlineOf(plan), ...(plan.steps || [])
+  const deadlines = [settlementDueOf(plan), ...activeSteps(plan)
     .filter((s) => s.status !== "done")
-    .map((s) => s.due)].filter(Boolean);
+    .map((s) => effectiveDue(s, plan))].filter(Boolean);
   if (deadlines.some((d) => d < today)) return "overdue";
 
   const updated = toDate(plan.updatedAt);
@@ -162,6 +226,19 @@ function periodText(plan) {
   else if (today > e) tail = ",已過結束日";
   else tail = `,剩 ${daysBetween(today, e)} 天`;
   return `${s} ～ ${e}${tail}`;
+}
+
+/** 結算期限的文字描述,讓老師知道還有多久要送結算 */
+function settlementText(plan) {
+  const due = settlementDueOf(plan);
+  if (!due) return "";
+  const { done, total } = progressOf(plan);
+  if (total > 0 && done === total) return "";
+
+  const left = daysBetween(todayStr(), due);
+  if (left < 0) return `結算期限 ${due}(已逾期 ${-left} 天)`;
+  if (left === 0) return `結算期限 ${due}(今天到期)`;
+  return `結算期限 ${due}(還有 ${left} 天)`;
 }
 
 /* ---------------- 應用狀態 ---------------- */
@@ -440,9 +517,78 @@ function meterHtml(plan) {
     </div>`;
 }
 
-/** 步驟清單,依階段分組 */
-function stepsHtml(plan, editable) {
+/** 單位下拉選單的選項(第一個是「承辦人手上」,值為空字串) */
+function unitOptions(loc) {
+  return `<option value=""${loc === DEFAULT_UNIT ? " selected" : ""}>${esc(DEFAULT_UNIT)}</option>` +
+    UNIT_GROUPS.filter((g) => g.label !== "承辦人").map((g) =>
+      `<optgroup label="${esc(g.label)}">${g.units.map((u) =>
+        `<option value="${esc(u)}"${loc === u ? " selected" : ""}>${esc(u)}</option>`).join("")}</optgroup>`).join("");
+}
+
+/** 一列步驟。inBundle 為 true 時不顯示個別位置選單,位置由整批共用 */
+function stepRowHtml(plan, s, editable, inBundle) {
   const today = todayStr();
+  const na = s.status === "na";
+
+  // 期限提示:逾期標紅、七天內標黃,讓老師不用自己算天數
+  const due = effectiveDue(s, plan);
+  const left = daysLeft(s, today, plan);
+  let dueHtml = "";
+  if (due && !na) {
+    let tail = "", cls = "";
+    if (left === null) tail = "";
+    else if (left < 0) { tail = "(已逾期)"; cls = "overdue"; }
+    else if (left === 0) { tail = "(今天到期)"; cls = "due-soon"; }
+    else if (left <= 7) { tail = `(還有 ${left} 天)`; cls = "due-soon"; }
+    // 沒自己填期限的結案步驟,標明期限是系統依結算寬限期推算的
+    const src = s.due ? "" : "(結算期限)";
+    dueHtml = `<span class="${cls}">期限 ${esc(due)}${src}${tail}</span>`;
+  }
+
+  const sub = [
+    dueHtml,
+    na ? `<span class="na-note">本次不需要辦理</span>` : "",
+    s.status === "done" && s.doneAt ? `<span class="done-at">✓ ${esc(s.doneAt)} 完成</span>` : "",
+    s.note ? `<span>${esc(s.note)}</span>` : ""
+  ].filter(Boolean).join("");
+
+  const loc = s.location || DEFAULT_UNIT;
+  const statusSelect = `
+    <select class="step-status" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="步驟狀態">
+      ${STEP_STATUSES.map((v) =>
+        `<option value="${v}"${s.status === v ? " selected" : ""}>${STEP_LABEL[v]}</option>`).join("")}
+    </select>`;
+
+  const controls = editable
+    ? `<div class="step-controls">
+         ${inBundle || na ? "" : `
+           <select class="step-loc" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="這份文件目前在哪">
+             ${unitOptions(loc)}
+           </select>`}
+         ${statusSelect}
+       </div>`
+    : `<div class="step-controls">
+         <span class="step-sub">${!inBundle && loc !== DEFAULT_UNIT ? `在 ${esc(loc)}・` : ""}${STEP_LABEL[s.status] || ""}</span>
+       </div>`;
+
+  const away = !inBundle && !na && s.location && s.location !== DEFAULT_UNIT && s.status !== "done";
+
+  return `
+    <div class="step-row" data-status="${esc(s.status)}">
+      <span class="step-marker" aria-hidden="true">${STEP_MARK[s.status] || "○"}</span>
+      <div class="step-main">
+        <div class="step-title">
+          ${esc(s.title)}
+          ${away ? `<span class="away-tag"><span aria-hidden="true">📄</span>已送至 ${esc(s.location)}</span>` : ""}
+        </div>
+        ${sub ? `<div class="step-sub">${sub}</div>` : ""}
+      </div>
+      ${controls}
+    </div>`;
+}
+
+/** 步驟清單,依階段分組,同一批公文再收成一個框 */
+function stepsHtml(plan, editable) {
   const steps = plan.steps || [];
   if (!steps.length) {
     return `<div class="steps"><p class="muted small" style="margin:10px 0 0">這個計畫還沒有步驟。</p></div>`;
@@ -454,61 +600,38 @@ function stepsHtml(plan, editable) {
     const rows = indexed.filter((s) => stageOf(s) === st.id);
     if (!rows.length) return "";
 
+    const body = groupBundles(rows).map((bundle) => {
+      if (bundle.length === 1) return stepRowHtml(plan, bundle[0], editable, false);
+
+      // 整批一起送:位置只有一個共用的選單,改一次全部跟著動
+      const live = bundle.filter((s) => s.status !== "na");
+      const loc = (live.find((s) => s.location)?.location) || DEFAULT_UNIT;
+      const idxs = live.map((s) => s._i).join(",");
+      const naCount = bundle.length - live.length;
+
+      const foot = editable && live.length
+        ? `<div class="bundle-foot">
+             <span class="muted small">這批文件目前在</span>
+             <select class="bundle-loc" data-plan="${esc(plan.id)}" data-steps="${idxs}"
+                     aria-label="這批文件目前在哪">${unitOptions(loc)}</select>
+           </div>`
+        : (live.length ? `<div class="bundle-foot"><span class="muted small">這批文件目前在 ${esc(loc)}</span></div>` : "");
+
+      return `
+        <div class="bundle">
+          <div class="bundle-head">
+            <span class="bundle-tag"><span aria-hidden="true">📎</span>一起送件</span>
+            <span class="muted small">${live.length} 份文件併成一份公文${naCount ? `,另 ${naCount} 份本次不適用` : ""}</span>
+          </div>
+          ${bundle.map((s) => stepRowHtml(plan, s, editable, true)).join("")}
+          ${foot}
+        </div>`;
+    }).join("");
+
     return `
       <div class="stage-group">
         <div class="stage-group-head">${esc(st.label)}階段<span class="muted small">・${esc(st.hint)}</span></div>
-        ${rows.map((s) => {
-          // 期限提示:逾期標紅、七天內標黃,讓老師不用自己算天數
-          const left = daysLeft(s, today);
-          let dueHtml = "";
-          if (s.due) {
-            let tail = "", cls = "";
-            if (left === null) tail = "";
-            else if (left < 0) { tail = "(已逾期)"; cls = "overdue"; }
-            else if (left === 0) { tail = "(今天到期)"; cls = "due-soon"; }
-            else if (left <= 7) { tail = `(還有 ${left} 天)`; cls = "due-soon"; }
-            dueHtml = `<span class="${cls}">期限 ${esc(s.due)}${tail}</span>`;
-          }
-
-          const sub = [
-            dueHtml,
-            s.status === "done" && s.doneAt ? `<span class="done-at">✓ ${esc(s.doneAt)} 完成</span>` : "",
-            s.note ? `<span>${esc(s.note)}</span>` : ""
-          ].filter(Boolean).join("");
-
-          const loc = s.location || DEFAULT_UNIT;
-          const controls = editable
-            ? `<div class="step-controls">
-                 <select class="step-loc" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="這份文件目前在哪">
-                   <option value=""${loc === DEFAULT_UNIT ? " selected" : ""}>${esc(DEFAULT_UNIT)}</option>
-                   ${UNIT_GROUPS.filter((g) => g.label !== "承辦人").map((g) =>
-                     `<optgroup label="${esc(g.label)}">${g.units.map((u) =>
-                       `<option value="${esc(u)}"${loc === u ? " selected" : ""}>${esc(u)}</option>`).join("")}</optgroup>`).join("")}
-                 </select>
-                 <select class="step-status" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="步驟狀態">
-                   ${Object.entries(STEP_LABEL).map(([v, l]) =>
-                     `<option value="${v}"${s.status === v ? " selected" : ""}>${l}</option>`).join("")}
-                 </select>
-               </div>`
-            : `<div class="step-controls">
-                 <span class="step-sub">${loc !== DEFAULT_UNIT ? `在 ${esc(loc)}・` : ""}${STEP_LABEL[s.status] || ""}</span>
-               </div>`;
-
-          const away = s.location && s.location !== DEFAULT_UNIT && s.status !== "done";
-
-          return `
-            <div class="step-row" data-status="${esc(s.status)}">
-              <span class="step-marker" aria-hidden="true">${STEP_MARK[s.status] || "○"}</span>
-              <div class="step-main">
-                <div class="step-title">
-                  ${esc(s.title)}
-                  ${away ? `<span class="away-tag"><span aria-hidden="true">📄</span>已送至 ${esc(s.location)}</span>` : ""}
-                </div>
-                ${sub ? `<div class="step-sub">${sub}</div>` : ""}
-              </div>
-              ${controls}
-            </div>`;
-        }).join("")}
+        ${body}
       </div>`;
   }).join("") + `</div>`;
 }
@@ -550,9 +673,17 @@ function planCard(plan, { editable }) {
     ? `<span class="next-chip"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.title)}</b></span>`
     : ((plan.steps || []).length ? `<span class="next-chip done"><span aria-hidden="true">✓</span>全部步驟已完成</span>` : "");
 
-  const outRow = (nextChip || out.length || legacy)
+  // 紙本跑完掃描上傳雲端後貼的連結
+  const drive = safeUrl(plan.driveUrl);
+  const driveChip = drive
+    ? `<a class="drive-chip" href="${esc(drive)}" target="_blank" rel="noopener noreferrer">
+         <span aria-hidden="true">📁</span>掃描檔<span class="ext" aria-hidden="true">↗</span></a>`
+    : "";
+
+  const outRow = (nextChip || out.length || legacy || driveChip)
     ? `<div class="loc-row">
          ${nextChip}
+         ${driveChip}
          ${out.map((d) => `<span class="loc-chip"><span aria-hidden="true">📄</span>${esc(d.title)} <span aria-hidden="true">→</span> <b>${esc(d.unit)}</b></span>`).join("")}
          ${legacy}
        </div>`
@@ -563,6 +694,7 @@ function planCard(plan, { editable }) {
     `${plan.year} 學年度 ${TERM_LABEL[String(plan.term)] || ""}`.trim(),
     plan.ownerName || plan.ownerEmail,
     period,
+    settlementText(plan),
     plan.budget ? `核定 ${money(plan.budget)} 元` : "",
     relativeDays(toDate(plan.updatedAt))
   ].filter(Boolean);
@@ -656,28 +788,34 @@ document.addEventListener("click", async (e) => {
   }
 });
 
-// 直接在卡片上更新單一步驟的狀態或所在單位
+// 直接在卡片上更新步驟狀態、單一文件位置,或整批文件的位置
 document.addEventListener("change", async (e) => {
-  const sel = e.target.closest(".step-status, .step-loc");
+  const sel = e.target.closest(".step-status, .step-loc, .bundle-loc");
   if (!sel) return;
   const plan = state.plans.find((p) => p.id === sel.dataset.plan);
   if (!plan) return;
 
-  const idx = Number(sel.dataset.step);
-  const isLoc = sel.classList.contains("step-loc");
-  const current = (plan.steps || [])[idx];
-  if (!current) return;
+  const all = plan.steps || [];
+  const isBundle = sel.classList.contains("bundle-loc");
+  const isLoc = isBundle || sel.classList.contains("step-loc");
 
-  const steps = (plan.steps || []).map((s, i) => {
-    if (i !== idx) return s;
+  // 要一起變動的步驟索引:整批送件會有好幾個
+  const targets = isBundle
+    ? sel.dataset.steps.split(",").filter(Boolean).map(Number)
+    : [Number(sel.dataset.step)];
+  if (!targets.length || !all[targets[0]]) return;
+
+  const steps = all.map((s, i) => {
+    if (!targets.includes(i)) return s;
     if (isLoc) return { ...s, location: sel.value };
-    // 標記完成時記下完成日期,取消完成就清掉
+    // 標記完成時記下完成日期,改成其他狀態就清掉
     return { ...s, status: sel.value, doneAt: sel.value === "done" ? todayStr() : "" };
   });
 
-  // 一個步驟完成後,自動把後面第一個「未開始」的步驟接成「進行中」,
-  // 老師只要按完成,下一步會自己亮起來。
+  // 一個步驟完成後,自動把後面第一個「未開始」的步驟接成「進行中」
+  // (本次不適用的步驟會被跳過)
   if (!isLoc && sel.value === "done") {
+    const idx = targets[0];
     const next = steps.findIndex((s, i) => i > idx && s.status === "todo");
     if (next !== -1) steps[next] = { ...steps[next], status: "doing" };
   }
@@ -686,13 +824,14 @@ document.addEventListener("change", async (e) => {
 
   // 位置有變動就自動留下一筆流轉紀錄,老師不必額外填表
   if (isLoc) {
-    const from = current.location || DEFAULT_UNIT;
+    const first = all[targets[0]];
+    const from = first.location || DEFAULT_UNIT;
     const to = sel.value || DEFAULT_UNIT;
     if (from !== to) {
       patch.flow = [...(plan.flow || []), {
         date: todayStr(), from, to,
-        step: current.title,
-        stage: stageOf(current),
+        step: targets.length > 1 ? `${first.title} 等 ${targets.length} 份` : first.title,
+        stage: stageOf(first),
         note: ""
       }];
     }
@@ -729,9 +868,13 @@ function renderStepEditor() {
              placeholder="輸入或從清單選擇" maxlength="80" aria-label="步驟名稱">
       <input value="${esc(s.due || "")}" data-k="due" type="date" aria-label="步驟期限">
       <select data-k="status" aria-label="步驟狀態">
-        ${Object.entries(STEP_LABEL).map(([v, l]) =>
-          `<option value="${v}"${s.status === v ? " selected" : ""}>${l}</option>`).join("")}
+        ${STEP_STATUSES.map((v) =>
+          `<option value="${v}"${s.status === v ? " selected" : ""}>${STEP_LABEL[v]}</option>`).join("")}
       </select>
+      <label class="same-doc" title="與上一個步驟併成同一份公文一起送">
+        <input type="checkbox" data-k="bundleWithPrev"${s.bundleWithPrev ? " checked" : ""}${i === 0 ? " disabled" : ""}>
+        <span>同批</span>
+      </label>
       <div class="row-tools">
         <button type="button" class="icon-btn" data-move="up" data-i="${i}"
                 title="上移" aria-label="上移這個步驟"${i === 0 ? " disabled" : ""}>↑</button>
@@ -756,13 +899,14 @@ $("#steps-editor").addEventListener("input", (e) => {
 $("#steps-editor").addEventListener("change", (e) => {
   const row = e.target.closest(".step-edit");
   if (!row || !e.target.dataset.k) return;
-  draftSteps[Number(row.dataset.i)][e.target.dataset.k] = e.target.value;
+  const k = e.target.dataset.k;
+  draftSteps[Number(row.dataset.i)][k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
   draftTouched = true;
   // 換階段時常用步驟清單要跟著換
-  if (e.target.dataset.k === "stage") renderStepEditor();
+  if (k === "stage") renderStepEditor();
 });
 
-const blankStep = (stage) => ({ title: "", due: "", status: "todo", note: "", stage });
+const blankStep = (stage) => ({ title: "", due: "", status: "todo", note: "", stage, bundleWithPrev: false });
 
 /** 把焦點放到第 n 列的名稱欄位,插入後可以直接打字 */
 function focusStepRow(n) {
@@ -837,6 +981,15 @@ $("#plan-template").addEventListener("change", (e) => {
   applyTemplate(tpl);
 });
 
+/** 在結束日期下方即時顯示系統推算出來的結算期限 */
+function updateSettlementHint() {
+  const end = pf("endDate").value;
+  $("#settlement-hint").textContent = end
+    ? `結算期限自動算到 ${addDays(end, SETTLEMENT_GRACE_DAYS)}(結束後 ${SETTLEMENT_GRACE_DAYS} 天),這裡只要填執行結束日`
+    : `填了之後,結算期限會自動算成結束後 ${SETTLEMENT_GRACE_DAYS} 天`;
+}
+$('#form-plan input[name="endDate"]').addEventListener("input", updateSettlementHint);
+
 function openPlanDialog(plan) {
   editingPlanId = plan?.id || null;
   $("#dlg-plan-title").textContent = plan ? "編輯計畫" : "新增計畫";
@@ -854,7 +1007,9 @@ function openPlanDialog(plan) {
   pf("startDate").value = plan?.startDate || "";
   pf("endDate").value = plan?.endDate || deadlineOf(plan || {}) || "";
   pf("budget").value = plan?.budget || "";
+  pf("driveUrl").value = plan?.driveUrl || "";
   pf("note").value = plan?.note || "";
+  updateSettlementHint();
 
   if (plan) {
     draftSteps = (plan.steps || []).map((s) => ({ ...s, stage: stageOf(s) }));
@@ -882,8 +1037,9 @@ formPlan.addEventListener("submit", async (e) => {
       title: s.title.trim(),
       stage: stageOf(s),
       due: s.due || "",
-      status: ["todo", "doing", "done"].includes(s.status) ? s.status : "todo",
+      status: STEP_STATUSES.includes(s.status) ? s.status : "todo",
       note: (s.note || "").trim(),
+      bundleWithPrev: !!s.bundleWithPrev,
       // 這兩個欄位是在卡片上維護的,編輯計畫時要原封帶回去,不能被洗掉
       location: s.location || "",
       doneAt: s.doneAt || ""
@@ -901,6 +1057,7 @@ formPlan.addEventListener("submit", async (e) => {
     startDate,
     endDate,
     budget: Number(pf("budget").value) || 0,
+    driveUrl: safeUrl(pf("driveUrl").value),
     note: pf("note").value.trim(),
     steps,
     updatedAt: serverTimestamp()

@@ -284,6 +284,16 @@ textarea { resize: vertical; }
 }
 .loc-chip b { color: var(--text-primary); }
 
+.drive-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 13px;
+  font-size: .86rem; color: var(--text-secondary); text-decoration: none;
+}
+.drive-chip:hover { border-color: var(--accent); color: var(--accent); }
+.drive-chip .ext { font-size: .75rem; opacity: .7; }
+
 .next-chip {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--accent); color: #fff;
@@ -353,9 +363,36 @@ textarea { resize: vertical; }
 .step-row:last-child { border-bottom: 0; }
 .step-main { flex: 1; min-width: 0; }
 .step-title { font-size: .92rem; }
-.step-row[data-status="done"] .step-title {
+.step-row[data-status="done"] .step-title,
+.step-row[data-status="na"] .step-title {
   text-decoration: line-through; color: var(--text-muted);
 }
+.step-row[data-status="na"] { opacity: .7; }
+.step-sub .na-note { color: var(--text-muted); }
+
+/* 一起送的一批公文 */
+.bundle {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-track);
+  border-radius: 8px;
+  margin: 8px 0; padding: 0 12px;
+  background: var(--accent-wash);
+}
+.bundle-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0 2px;
+}
+.bundle-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: .8rem; font-weight: 600; color: var(--text-primary);
+}
+.bundle .step-row { border-bottom-color: var(--border); }
+.bundle .step-row:last-of-type { border-bottom: 0; }
+.bundle-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0 10px; border-top: 1px solid var(--border);
+}
+.bundle-foot select { width: auto; min-width: 168px; font-size: .85rem; padding: 4px 8px; }
 .step-sub {
   font-size: .8rem; color: var(--text-secondary);
   display: flex; flex-wrap: wrap; gap: 3px 10px;
@@ -428,8 +465,17 @@ textarea { resize: vertical; }
 .steps-editor { display: flex; flex-direction: column; gap: 8px; }
 .step-edit {
   display: grid; gap: 6px; align-items: center;
-  grid-template-columns: 84px minmax(150px, 1fr) 140px 104px auto;
+  grid-template-columns: 84px minmax(130px, 1fr) 138px 104px auto auto;
 }
+
+/* 「與上一個步驟一起送公文」 */
+.same-doc {
+  display: flex; align-items: center; gap: 4px;
+  font-size: .78rem; color: var(--text-secondary);
+  white-space: nowrap; cursor: pointer;
+}
+.same-doc input { width: auto; margin: 0; accent-color: var(--accent); }
+.same-doc:has(input:disabled) { opacity: .35; cursor: default; }
 .step-edit input, .step-edit select { margin: 0; }
 
 .hint { color: var(--text-muted); font-size: .8rem; margin-top: 3px; }

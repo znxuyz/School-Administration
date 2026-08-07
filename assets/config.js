@@ -101,19 +101,20 @@ export const TEMPLATES = [
     id: "full",
     label: "標準行政計畫(含經費核銷)",
     desc: "計畫、核定、執行、結案四階段完整流程,適用有經費補助的計畫。",
+    // bundleWithPrev:與上一個步驟併成同一份公文一起送
     steps: [
       { stage: "plan",    title: "計畫書撰寫" },
-      { stage: "plan",    title: "經費概算表" },
+      { stage: "plan",    title: "經費概算表", bundleWithPrev: true },
       { stage: "approve", title: "上級核定函收文" },
       { stage: "approve", title: "呈送領據" },
       { stage: "execute", title: "活動辦理" },
       { stage: "execute", title: "成果照片蒐集" },
       { stage: "close",   title: "核銷資料彙整" },
-      { stage: "close",   title: "經費支出結算表" },
-      { stage: "close",   title: "支出憑證—財務請購" },
-      { stage: "close",   title: "支出憑證—薪水動簽" },
-      { stage: "close",   title: "支出憑證—勞保勞退" },
-      { stage: "close",   title: "剩餘款繳回" },
+      { stage: "close",   title: "經費支出結算表", bundleWithPrev: true },
+      { stage: "close",   title: "支出憑證—財務請購", bundleWithPrev: true },
+      { stage: "close",   title: "支出憑證—薪水動簽", bundleWithPrev: true },
+      { stage: "close",   title: "支出憑證—勞保勞退", bundleWithPrev: true },
+      { stage: "close",   title: "剩餘款繳回", bundleWithPrev: true },
       { stage: "close",   title: "結案函報上級" }
     ]
   },
@@ -140,3 +141,7 @@ export const TEMPLATES = [
 
 // 超過這個天數沒有更新,且尚未完成的計畫會被標為「待更新」。
 export const STALE_DAYS = 14;
+
+// 結算寬限期:計畫執行結束後還有幾天可以送結算。
+// 老師填的「執行結束日期」不含這段時間,系統會自動往後加。
+export const SETTLEMENT_GRACE_DAYS = 14;

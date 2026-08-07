@@ -1,0 +1,91 @@
+rules_version = '2';
+
+// 行政工作進度追蹤系統 — Firestore 安全規則
+//
+// 核心原則:
+//   1. 沒登入 → 什麼都不能做。
+//   2. 登入了但 Email 不在 allowlist 名單 → 什麼都不能做。
+//   3. 名單內的成員 → 可以看全部計畫,但只能改自己的。
+//   4. 只有 role == 'admin' 的成員可以管理名單。
+//
+// 貼上位置:Firebase 主控台 → Firestore Database → 規則 → 全部貼上 → 發布
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    // 以小寫 Email 當作名單的文件 ID
+    function emailKey() {
+      return request.auth.token.email.lower();
+    }
+
+    function memberPath() {
+      return /databases/$(database)/documents/allowlist/$(emailKey());
+    }
+
+    // 是名單內的成員(且 Google 已驗證該 Email)
+    function isMember() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && exists(memberPath());
+    }
+
+    function isAdmin() {
+      return isMember() && get(memberPath()).data.role == 'admin';
+    }
+
+    // ---------- 成員名單 ----------
+    match /allowlist/{email} {
+      // 名單內的人都能讀(畫面要顯示姓名、處室)
+      allow read: if isMember();
+
+      // 只有管理者能異動名單
+      allow create, update: if isAdmin()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.dept is string
+        && request.resource.data.role in ['teacher', 'admin'];
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------- 行政計畫 ----------
+    match /plans/{planId} {
+
+      function validPlan(d) {
+        return d.title is string && d.title.size() > 0 && d.title.size() <= 200
+          && d.dept is string
+          && d.year is int
+          && d.steps is list
+          && d.steps.size() <= 100;
+      }
+
+      // 全校成員都看得到彼此的進度
+      allow read: if isMember();
+
+      // 只能以自己的身分建立計畫
+      allow create: if isMember()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerEmail == emailKey()
+        && validPlan(request.resource.data);
+
+      // 自己的計畫可以改;管理者可以改所有人的。擁有者欄位一律不可竄改。
+      allow update: if isMember()
+        && (resource.data.ownerUid == request.auth.uid || isAdmin())
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && validPlan(request.resource.data);
+
+      allow delete: if isMember()
+        && (resource.data.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // 其他路徑一律禁止
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

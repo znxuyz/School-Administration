@@ -185,10 +185,6 @@
         <span>核定經費(元)</span>
         <input name="budget" type="number" min="0" step="1" placeholder="沒有經費可留空">
       </label>
-      <label class="field">
-        <span>公文目前所在單位</span>
-        <select name="location"></select>
-      </label>
     </div>
 
     <label class="field">
@@ -203,6 +199,7 @@
     <p class="muted small">
       步驟名稱可以直接從欄位的下拉清單挑選常用項目,也可以自己打字。
       每個步驟要指定所屬階段,總覽頁就會顯示計畫走到哪一段。
+      公文送到哪裡不用在這裡設定 —— 建好之後在卡片上直接更新該份文件的位置就好。
     </p>
     <div id="steps-editor" class="steps-editor"></div>
 
@@ -211,41 +208,6 @@
     <div class="dlg-actions">
       <button type="button" id="btn-plan-cancel" class="btn">取消</button>
       <button type="submit" class="btn btn-primary">儲存</button>
-    </div>
-  </form>
-</dialog>
-
-<!-- 公文流向登記 -->
-<dialog id="dlg-flow" class="dlg dlg-narrow">
-  <form id="form-flow" method="dialog">
-    <h3>登記公文流向</h3>
-    <p class="muted small" id="flow-plan-name"></p>
-    <label class="field">
-      <span>目前在</span>
-      <input name="from" readonly>
-    </label>
-    <label class="field">
-      <span>送到 <b class="req">*</b></span>
-      <select name="to" required></select>
-    </label>
-    <div class="grid-2">
-      <label class="field">
-        <span>日期 <b class="req">*</b></span>
-        <input name="date" type="date" required>
-      </label>
-      <label class="field">
-        <span>相關階段</span>
-        <select name="stage"></select>
-      </label>
-    </div>
-    <label class="field">
-      <span>備註</span>
-      <input name="note" maxlength="100" placeholder="例:府教特字第1140012345號">
-    </label>
-    <p id="flow-error" class="status-line status-critical" hidden></p>
-    <div class="dlg-actions">
-      <button type="button" id="btn-flow-cancel" class="btn">取消</button>
-      <button type="submit" class="btn btn-primary">登記</button>
     </div>
   </form>
 </dialog>

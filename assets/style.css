@@ -263,9 +263,9 @@ textarea { resize: vertical; }
   color: var(--text-secondary); font-size: .88rem; white-space: pre-wrap;
 }
 
-/* 公文所在單位 */
+/* 在外文件:哪一份文件送到哪個單位 */
 .loc-row {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 8px;
   flex-wrap: wrap; margin-top: 12px;
 }
 .loc-chip {
@@ -273,9 +273,18 @@ textarea { resize: vertical; }
   background: var(--accent-wash);
   border: 1px solid var(--border);
   border-radius: 999px; padding: 5px 13px;
-  font-size: .88rem; color: var(--text-secondary);
+  font-size: .86rem; color: var(--text-secondary);
 }
 .loc-chip b { color: var(--text-primary); }
+
+.away-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  background: var(--accent-wash); color: var(--text-secondary);
+  font-size: .76rem; white-space: nowrap;
+}
+.step-controls { display: flex; gap: 6px; flex: none; }
+.step-loc { width: auto; min-width: 148px; font-size: .85rem; padding: 4px 8px; }
 
 /* 四階段進度:計畫 → 核定 → 執行 → 結案 */
 .stage-bar {
@@ -316,6 +325,7 @@ textarea { resize: vertical; }
 }
 .flow-list li:last-child { border-bottom: 0; }
 .flow-date { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.flow-step { font-weight: 600; }
 .flow-tag {
   background: var(--accent-wash); color: var(--text-secondary);
   border-radius: 4px; padding: 1px 7px; font-size: .78rem;
@@ -411,6 +421,9 @@ textarea { resize: vertical; }
 @media (max-width: 720px) {
   .grid-2 { grid-template-columns: 1fr; }
   .step-edit { grid-template-columns: 1fr; }
+  .step-row { flex-wrap: wrap; }
+  .step-controls { width: 100%; padding-left: 1.2em; }
+  .step-controls select { flex: 1; min-width: 0; }
   .topbar-inner { gap: 10px; }
   .tabs { order: 3; width: 100%; }
   .wrap { padding: 18px 14px 48px; }

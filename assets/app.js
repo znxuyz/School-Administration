@@ -82,6 +82,23 @@ const STATUS_META = {
 /** 舊資料相容:整體期限先看 endDate,沒有才回頭看早期的 dueDate */
 const deadlineOf = (plan) => plan.endDate || plan.dueDate || "";
 
+/**
+ * 還在外面的文件:有指定所在單位、而且不是「承辦人手上」、也還沒完成的步驟。
+ * 公文位置是掛在每一份文件(步驟)上的,不是整個計畫共用一個位置。
+ */
+function documentsOut(plan) {
+  return (plan.steps || [])
+    .filter((s) => s.location && s.location !== DEFAULT_UNIT && s.status !== "done")
+    .map((s) => ({ title: s.title, unit: s.location }));
+}
+
+/** 這個計畫目前有文件停在哪些單位(篩選用,含舊格式的計畫層級位置) */
+function unitsOf(plan) {
+  const units = documentsOut(plan).map((d) => d.unit);
+  if (plan.location && plan.location !== DEFAULT_UNIT) units.push(plan.location);
+  return [...new Set(units)];
+}
+
 const stageOf = (step) => (STAGE_IDS.includes(step.stage) ? step.stage : "execute");
 
 function progressOf(plan) {
@@ -304,11 +321,7 @@ function initSelects() {
 
   fillSelect($('#form-plan select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
   fillSelect($('#form-plan select[name="year"]'), yearOptions().map((y) => [String(y), `${y} 學年度`]));
-  fillUnitSelect($('#form-plan select[name="location"]'));
-
   fillSelect($("#plan-template"), TEMPLATES.map((t) => [t.id, t.label]));
-  fillUnitSelect($('#form-flow select[name="to"]'), { placeholder: "請選擇" });
-  fillSelect($('#form-flow select[name="stage"]'), STAGES.map((s) => [s.id, s.label]), { placeholder: "不指定" });
 
   fillSelect($('#form-member select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
 }
@@ -342,7 +355,7 @@ function applyFilters(plans) {
     if (year && String(p.year) !== year) return false;
     if (dept && p.dept !== dept) return false;
     if (owner && p.ownerUid !== owner) return false;
-    if (unit && (p.location || DEFAULT_UNIT) !== unit) return false;
+    if (unit && !unitsOf(p).includes(unit)) return false;
     if (stage && currentStage(p)?.id !== stage) return false;
     if (status && statusOf(p) !== status) return false;
     if (kw && !`${p.title} ${p.note || ""}`.toLowerCase().includes(kw)) return false;
@@ -428,21 +441,37 @@ function stepsHtml(plan, editable) {
             s.note ? `<span>${esc(s.note)}</span>` : ""
           ].filter(Boolean).join("");
 
-          const control = editable
-            ? `<select class="step-status" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="步驟狀態">
-                 ${Object.entries(STEP_LABEL).map(([v, l]) =>
-                   `<option value="${v}"${s.status === v ? " selected" : ""}>${l}</option>`).join("")}
-               </select>`
-            : `<span class="step-sub">${STEP_LABEL[s.status] || ""}</span>`;
+          const loc = s.location || DEFAULT_UNIT;
+          const controls = editable
+            ? `<div class="step-controls">
+                 <select class="step-loc" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="這份文件目前在哪">
+                   <option value=""${loc === DEFAULT_UNIT ? " selected" : ""}>${esc(DEFAULT_UNIT)}</option>
+                   ${UNIT_GROUPS.filter((g) => g.label !== "承辦人").map((g) =>
+                     `<optgroup label="${esc(g.label)}">${g.units.map((u) =>
+                       `<option value="${esc(u)}"${loc === u ? " selected" : ""}>${esc(u)}</option>`).join("")}</optgroup>`).join("")}
+                 </select>
+                 <select class="step-status" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="步驟狀態">
+                   ${Object.entries(STEP_LABEL).map(([v, l]) =>
+                     `<option value="${v}"${s.status === v ? " selected" : ""}>${l}</option>`).join("")}
+                 </select>
+               </div>`
+            : `<div class="step-controls">
+                 <span class="step-sub">${loc !== DEFAULT_UNIT ? `在 ${esc(loc)}・` : ""}${STEP_LABEL[s.status] || ""}</span>
+               </div>`;
+
+          const away = s.location && s.location !== DEFAULT_UNIT && s.status !== "done";
 
           return `
             <div class="step-row" data-status="${esc(s.status)}">
               <span class="step-marker" aria-hidden="true">${STEP_MARK[s.status] || "○"}</span>
               <div class="step-main">
-                <div class="step-title">${esc(s.title)}</div>
+                <div class="step-title">
+                  ${esc(s.title)}
+                  ${away ? `<span class="away-tag"><span aria-hidden="true">📄</span>已送至 ${esc(s.location)}</span>` : ""}
+                </div>
                 ${sub ? `<div class="step-sub">${sub}</div>` : ""}
               </div>
-              ${control}
+              ${controls}
             </div>`;
         }).join("")}
       </div>`;
@@ -461,6 +490,7 @@ function flowHtml(plan) {
         ${flow.map((f) => `
           <li>
             <span class="flow-date">${esc(f.date)}</span>
+            ${f.step ? `<span class="flow-step">${esc(f.step)}</span>` : ""}
             <span class="flow-move">${esc(f.from || "—")} <span aria-hidden="true">→</span> <b>${esc(f.to)}</b></span>
             ${f.stage ? `<span class="flow-tag">${esc(STAGE_LABEL[f.stage] || "")}階段</span>` : ""}
             ${f.note ? `<span class="muted">${esc(f.note)}</span>` : ""}
@@ -473,8 +503,18 @@ function planCard(plan, { editable }) {
   const st = statusOf(plan);
   const meta = STATUS_META[st];
   const open = state.expanded.has(plan.id);
-  const location = plan.location || DEFAULT_UNIT;
   const period = periodText(plan);
+
+  // 在外文件一覽:哪一份文件送到哪裡去了
+  const out = documentsOut(plan);
+  const legacy = plan.location && plan.location !== DEFAULT_UNIT && !out.length
+    ? `<span class="loc-chip">📄 公文在:<b>${esc(plan.location)}</b></span>` : "";
+  const outRow = (out.length || legacy)
+    ? `<div class="loc-row">
+         ${out.map((d) => `<span class="loc-chip"><span aria-hidden="true">📄</span>${esc(d.title)} <span aria-hidden="true">→</span> <b>${esc(d.unit)}</b></span>`).join("")}
+         ${legacy}
+       </div>`
+    : "";
 
   const bits = [
     plan.dept,
@@ -500,11 +540,7 @@ function planCard(plan, { editable }) {
         </div>
       </div>
 
-      <div class="loc-row">
-        <span class="loc-chip"><span aria-hidden="true">📄</span>公文目前在:<b>${esc(location)}</b></span>
-        ${editable ? `<button class="btn btn-sm" data-act="flow" data-id="${esc(plan.id)}">登記流向</button>` : ""}
-      </div>
-
+      ${outRow}
       ${stageBarHtml(plan)}
       ${meterHtml(plan)}
       ${plan.note ? `<p class="plan-note">${esc(plan.note)}</p>` : ""}
@@ -568,8 +604,6 @@ document.addEventListener("click", async (e) => {
     renderMine();
   } else if (act === "edit") {
     openPlanDialog(plan);
-  } else if (act === "flow") {
-    openFlowDialog(plan);
   } else if (act === "delete") {
     if (!confirm(`確定要刪除「${plan.title}」嗎?此動作無法復原。`)) return;
     try {
@@ -580,17 +614,41 @@ document.addEventListener("click", async (e) => {
   }
 });
 
-// 直接在卡片上更新單一步驟狀態
+// 直接在卡片上更新單一步驟的狀態或所在單位
 document.addEventListener("change", async (e) => {
-  const sel = e.target.closest(".step-status");
+  const sel = e.target.closest(".step-status, .step-loc");
   if (!sel) return;
   const plan = state.plans.find((p) => p.id === sel.dataset.plan);
   if (!plan) return;
 
-  const steps = (plan.steps || []).map((s, i) =>
-    i === Number(sel.dataset.step) ? { ...s, status: sel.value } : s);
+  const idx = Number(sel.dataset.step);
+  const isLoc = sel.classList.contains("step-loc");
+  const current = (plan.steps || [])[idx];
+  if (!current) return;
+
+  const steps = (plan.steps || []).map((s, i) => {
+    if (i !== idx) return s;
+    return isLoc ? { ...s, location: sel.value } : { ...s, status: sel.value };
+  });
+
+  const patch = { steps, updatedAt: serverTimestamp() };
+
+  // 位置有變動就自動留下一筆流轉紀錄,老師不必額外填表
+  if (isLoc) {
+    const from = current.location || DEFAULT_UNIT;
+    const to = sel.value || DEFAULT_UNIT;
+    if (from !== to) {
+      patch.flow = [...(plan.flow || []), {
+        date: todayStr(), from, to,
+        step: current.title,
+        stage: stageOf(current),
+        note: ""
+      }];
+    }
+  }
+
   try {
-    await updateDoc(doc(db, "plans", plan.id), { steps, updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, "plans", plan.id), patch);
   } catch (err) {
     alert(`更新失敗:${err.message}`);
   }
@@ -699,7 +757,6 @@ function openPlanDialog(plan) {
   pf("startDate").value = plan?.startDate || "";
   pf("endDate").value = plan?.endDate || deadlineOf(plan || {}) || "";
   pf("budget").value = plan?.budget || "";
-  pf("location").value = plan?.location || DEFAULT_UNIT;
   pf("note").value = plan?.note || "";
 
   if (plan) {
@@ -744,7 +801,6 @@ formPlan.addEventListener("submit", async (e) => {
     startDate,
     endDate,
     budget: Number(pf("budget").value) || 0,
-    location: pf("location").value || DEFAULT_UNIT,
     note: pf("note").value.trim(),
     steps,
     updatedAt: serverTimestamp()
@@ -777,65 +833,6 @@ formPlan.addEventListener("submit", async (e) => {
     dlgPlan.close();
   } catch (e2) {
     err.textContent = `儲存失敗:${e2.message}`;
-    show(err, true);
-  }
-});
-
-/* ---------------- 公文流向登記 ---------------- */
-
-const dlgFlow = $("#dlg-flow");
-const formFlow = $("#form-flow");
-let flowPlanId = null;
-
-const ff = (name) => formFlow.elements.namedItem(name);
-
-function openFlowDialog(plan) {
-  flowPlanId = plan.id;
-  $("#flow-plan-name").textContent = plan.title;
-  show($("#flow-error"), false);
-  formFlow.reset();
-
-  ff("from").value = plan.location || DEFAULT_UNIT;
-  ff("to").value = "";
-  ff("date").value = todayStr();
-  ff("stage").value = currentStage(plan)?.id || "";
-  dlgFlow.showModal();
-}
-
-$("#btn-flow-cancel").addEventListener("click", () => dlgFlow.close());
-
-formFlow.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const err = $("#flow-error");
-  show(err, false);
-
-  const plan = state.plans.find((p) => p.id === flowPlanId);
-  if (!plan) return;
-
-  const to = ff("to").value;
-  if (!to) {
-    err.textContent = "請選擇公文要送到哪個單位。";
-    show(err, true);
-    return;
-  }
-
-  const entry = {
-    from: plan.location || DEFAULT_UNIT,
-    to,
-    date: ff("date").value || todayStr(),
-    stage: ff("stage").value || "",
-    note: ff("note").value.trim()
-  };
-
-  try {
-    await updateDoc(doc(db, "plans", plan.id), {
-      location: to,
-      flow: [...(plan.flow || []), entry],
-      updatedAt: serverTimestamp()
-    });
-    dlgFlow.close();
-  } catch (e2) {
-    err.textContent = `登記失敗:${e2.message}`;
     show(err, true);
   }
 });

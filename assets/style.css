@@ -263,8 +263,63 @@ textarea { resize: vertical; }
   color: var(--text-secondary); font-size: .88rem; white-space: pre-wrap;
 }
 
+/* 公文所在單位 */
+.loc-row {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; margin-top: 12px;
+}
+.loc-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent-wash);
+  border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 13px;
+  font-size: .88rem; color: var(--text-secondary);
+}
+.loc-chip b { color: var(--text-primary); }
+
+/* 四階段進度:計畫 → 核定 → 執行 → 結案 */
+.stage-bar {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 2px; margin-top: 12px;
+}
+.stage-cell {
+  display: flex; align-items: baseline; justify-content: center; gap: 6px;
+  padding: 6px 4px; font-size: .84rem;
+  background: var(--hairline); color: var(--text-secondary);
+}
+.stage-cell:first-child { border-radius: 6px 0 0 6px; }
+.stage-cell:last-child { border-radius: 0 6px 6px 0; }
+.stage-name { font-weight: 600; }
+.stage-count { font-variant-numeric: tabular-nums; font-size: .8rem; }
+.stage-cell.complete { background: var(--good-track); color: var(--text-primary); }
+.stage-cell.current  { background: var(--accent); color: #fff; }
+.stage-cell.blank    { opacity: .55; }
+
 /* 步驟清單 */
 .steps { margin-top: 12px; border-top: 1px solid var(--hairline); }
+.stage-group { padding-top: 4px; }
+.stage-group-head {
+  font-size: .82rem; font-weight: 600; color: var(--text-secondary);
+  padding: 10px 0 4px; letter-spacing: .02em;
+}
+.stage-group-head .muted { font-weight: 400; }
+
+/* 公文流轉紀錄 */
+.flow-log { margin-top: 6px; border-top: 1px solid var(--hairline); }
+.flow-list {
+  list-style: none; margin: 0; padding: 0;
+  font-size: .86rem;
+}
+.flow-list li {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--hairline);
+}
+.flow-list li:last-child { border-bottom: 0; }
+.flow-date { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.flow-tag {
+  background: var(--accent-wash); color: var(--text-secondary);
+  border-radius: 4px; padding: 1px 7px; font-size: .78rem;
+}
 .step-row {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 9px 0; border-bottom: 1px solid var(--hairline);
@@ -316,15 +371,22 @@ textarea { resize: vertical; }
 /* ---------- 對話框 ---------- */
 .dlg {
   border: 1px solid var(--border); border-radius: 12px;
-  padding: 24px; width: min(680px, calc(100vw - 32px));
+  padding: 0 24px 0; width: min(680px, calc(100vw - 32px));
+  max-height: 88vh;                  /* 步驟多的時候對話框自己捲動,不要溢出視窗 */
   background: var(--surface-1); color: var(--text-primary);
   box-shadow: 0 8px 40px rgba(0, 0, 0, .18);
 }
 .dlg-narrow { width: min(440px, calc(100vw - 32px)); }
 .dlg::backdrop { background: rgba(11, 11, 11, .45); }
+.dlg > form { padding: 24px 0; }
+.dlg > form > h3 { margin-top: 0; }
+
+/* 儲存/取消固定在底部,步驟很多時也按得到 */
 .dlg-actions {
   display: flex; justify-content: flex-end; gap: 8px;
-  margin-top: 20px; padding-top: 16px;
+  position: sticky; bottom: 0;
+  margin-top: 20px; padding: 14px 0;
+  background: var(--surface-1);
   border-top: 1px solid var(--hairline);
 }
 .steps-head {
@@ -335,9 +397,11 @@ textarea { resize: vertical; }
 .steps-editor { display: flex; flex-direction: column; gap: 8px; }
 .step-edit {
   display: grid; gap: 8px; align-items: center;
-  grid-template-columns: 1fr 140px 120px auto;
+  grid-template-columns: 92px 1fr 145px 112px auto;
 }
 .step-edit input, .step-edit select { margin: 0; }
+
+.hint { color: var(--text-muted); font-size: .8rem; margin-top: 3px; }
 
 .status-line {
   font-size: .88rem; padding: 8px 12px; border-radius: 8px; margin: 12px 0 0;

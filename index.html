@@ -31,7 +31,7 @@
     <h1>尚未取得使用權限</h1>
     <p class="muted">
       你的帳號 <strong id="denied-email"></strong> 不在系統的使用者名單中。
-      請聯絡系統管理者(教務主任或資訊組)將你的 Email 加入名單後,再重新登入。
+      請聯絡系統管理者將你的 Email 加入名單後,再重新登入。
     </p>
     <button id="btn-signout-denied" class="btn">登出並更換帳號</button>
   </div>
@@ -82,6 +82,14 @@
           <select id="f-owner"></select>
         </label>
         <label class="field">
+          <span>階段</span>
+          <select id="f-stage"></select>
+        </label>
+        <label class="field">
+          <span>公文所在</span>
+          <select id="f-unit"></select>
+        </label>
+        <label class="field">
           <span>狀態</span>
           <select id="f-status">
             <option value="">全部</option>
@@ -105,7 +113,7 @@
     <section id="panel-mine" class="panel" hidden>
       <div class="panel-head">
         <h2>我的行政工作</h2>
-        <p class="muted">在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度。</p>
+        <p class="muted">在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度與公文流向。</p>
         <button id="btn-new-plan" class="btn btn-primary">＋ 新增計畫</button>
       </div>
       <div id="mine-list" class="plan-list"></div>
@@ -138,13 +146,19 @@
   <form id="form-plan" method="dialog">
     <h3 id="dlg-plan-title">新增計畫</h3>
 
+    <label class="field" id="template-field">
+      <span>套用範本</span>
+      <select id="plan-template"></select>
+      <small class="hint" id="template-hint"></small>
+    </label>
+
     <div class="grid-2">
       <label class="field">
         <span>計畫名稱 <b class="req">*</b></span>
-        <input name="title" required maxlength="80" placeholder="例:114 學年度校慶運動會">
+        <input name="title" required maxlength="80" placeholder="例:115 學年度戶外教育實施計畫">
       </label>
       <label class="field">
-        <span>處室 <b class="req">*</b></span>
+        <span>承辦處室 <b class="req">*</b></span>
         <select name="dept" required></select>
       </label>
       <label class="field">
@@ -160,21 +174,36 @@
         </select>
       </label>
       <label class="field">
-        <span>整體完成期限</span>
-        <input name="dueDate" type="date">
+        <span>執行開始日期</span>
+        <input name="startDate" type="date">
+      </label>
+      <label class="field">
+        <span>執行結束日期</span>
+        <input name="endDate" type="date">
+      </label>
+      <label class="field">
+        <span>核定經費(元)</span>
+        <input name="budget" type="number" min="0" step="1" placeholder="沒有經費可留空">
+      </label>
+      <label class="field">
+        <span>公文目前所在單位</span>
+        <select name="location"></select>
       </label>
     </div>
 
     <label class="field">
       <span>備註說明</span>
-      <textarea name="note" rows="2" maxlength="500" placeholder="計畫目的、依據公文文號等"></textarea>
+      <textarea name="note" rows="2" maxlength="500" placeholder="計畫依據、來文文號等"></textarea>
     </label>
 
     <div class="steps-head">
       <h4>執行步驟</h4>
       <button type="button" id="btn-add-step" class="btn btn-sm">＋ 新增步驟</button>
     </div>
-    <p class="muted small">把工作拆成幾個可以逐項打勾的步驟,進度就會自動計算。</p>
+    <p class="muted small">
+      步驟名稱可以直接從欄位的下拉清單挑選常用項目,也可以自己打字。
+      每個步驟要指定所屬階段,總覽頁就會顯示計畫走到哪一段。
+    </p>
     <div id="steps-editor" class="steps-editor"></div>
 
     <p id="plan-error" class="status-line status-critical" hidden></p>
@@ -182,6 +211,41 @@
     <div class="dlg-actions">
       <button type="button" id="btn-plan-cancel" class="btn">取消</button>
       <button type="submit" class="btn btn-primary">儲存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 公文流向登記 -->
+<dialog id="dlg-flow" class="dlg dlg-narrow">
+  <form id="form-flow" method="dialog">
+    <h3>登記公文流向</h3>
+    <p class="muted small" id="flow-plan-name"></p>
+    <label class="field">
+      <span>目前在</span>
+      <input name="from" readonly>
+    </label>
+    <label class="field">
+      <span>送到 <b class="req">*</b></span>
+      <select name="to" required></select>
+    </label>
+    <div class="grid-2">
+      <label class="field">
+        <span>日期 <b class="req">*</b></span>
+        <input name="date" type="date" required>
+      </label>
+      <label class="field">
+        <span>相關階段</span>
+        <select name="stage"></select>
+      </label>
+    </div>
+    <label class="field">
+      <span>備註</span>
+      <input name="note" maxlength="100" placeholder="例:府教特字第1140012345號">
+    </label>
+    <p id="flow-error" class="status-line status-critical" hidden></p>
+    <div class="dlg-actions">
+      <button type="button" id="btn-flow-cancel" class="btn">取消</button>
+      <button type="submit" class="btn btn-primary">登記</button>
     </div>
   </form>
 </dialog>
@@ -222,6 +286,9 @@
     </div>
   </form>
 </dialog>
+
+<!-- 常用步驟名稱清單(由 config.js 產生) -->
+<div id="datalists" hidden></div>
 
 <script type="module" src="assets/app.js"></script>
 </body>

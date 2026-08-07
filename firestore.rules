@@ -60,7 +60,11 @@ service cloud.firestore {
           && d.dept is string
           && d.year is int
           && d.steps is list
-          && d.steps.size() <= 100;
+          && d.steps.size() <= 100
+          // 公文流轉紀錄與所在單位為選填(舊資料沒有這些欄位也不會被擋)
+          && (!d.keys().hasAny(['flow']) || (d.flow is list && d.flow.size() <= 300))
+          && (!d.keys().hasAny(['location']) || d.location is string)
+          && (!d.keys().hasAny(['budget']) || d.budget is number);
       }
 
       // 全校成員都看得到彼此的進度

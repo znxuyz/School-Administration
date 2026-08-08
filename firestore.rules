@@ -73,6 +73,7 @@ service cloud.firestore {
           && d.steps.size() <= 100
           // 公文流轉紀錄與所在單位為選填(舊資料沒有這些欄位也不會被擋)
           && (!d.keys().hasAny(['flow']) || (d.flow is list && d.flow.size() <= 300))
+          && (!d.keys().hasAny(['handovers']) || (d.handovers is list && d.handovers.size() <= 50))
           && (!d.keys().hasAny(['location']) || d.location is string)
           && (!d.keys().hasAny(['budget']) || d.budget is number)
           // 掃描檔連結只收 http/https,前端也會再擋一次
@@ -82,10 +83,11 @@ service cloud.firestore {
       }
 
       // 可見範圍分層:組長只看自己的、主任看同處室、管理員看全部。
+      // 承辦人一律以 ownerEmail 判定(職務交接後 uid 會換人,Email 才是穩定的依據)。
       // 前端的查詢條件必須和這裡一致,否則 Firestore 會拒絕整個查詢。
       allow read: if isMember()
         && (isAdmin()
-            || resource.data.ownerUid == request.auth.uid
+            || resource.data.ownerEmail == emailKey()
             || isDirectorOf(resource.data.dept));
 
       // 只能以自己的身分建立計畫
@@ -95,15 +97,21 @@ service cloud.firestore {
         && validPlan(request.resource.data);
 
       // 只有承辦人自己和管理員能改。主任看得到但不能代為修改。
-      // 擁有者欄位一律不可竄改。
+      //
+      // 承辦人欄位平常不可異動;唯一的例外是職務交接 ——
+      // 管理員可以把承辦人換成名單內的另一位成員。
       allow update: if isMember()
-        && (resource.data.ownerUid == request.auth.uid || isAdmin())
-        && request.resource.data.ownerUid == resource.data.ownerUid
-        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && (resource.data.ownerEmail == emailKey() || isAdmin())
+        && (
+             request.resource.data.ownerEmail == resource.data.ownerEmail
+             || (isAdmin()
+                 && request.resource.data.ownerEmail is string
+                 && exists(/databases/$(database)/documents/allowlist/$(request.resource.data.ownerEmail)))
+           )
         && validPlan(request.resource.data);
 
       allow delete: if isMember()
-        && (resource.data.ownerUid == request.auth.uid || isAdmin());
+        && (resource.data.ownerEmail == emailKey() || isAdmin());
     }
 
     // 其他路徑一律禁止

@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記,改版時要和 config.js 的 APP_VERSION、sw.js 的 VERSION 一起更新,
      否則瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=2026.08.08.4">
+<link rel="stylesheet" href="assets/style.css?v=2026.08.08.5">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -168,7 +168,7 @@
       <div class="table-scroll">
         <table class="table" id="members-table">
           <thead>
-            <tr><th>姓名</th><th>Email</th><th>處室</th><th>職稱</th><th>權限</th><th>狀態</th><th></th></tr>
+            <tr><th>姓名</th><th>Email</th><th>處室</th><th>職稱</th><th>權限</th><th>名下計畫</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -265,6 +265,34 @@
   </form>
 </dialog>
 
+<!-- 職務交接 -->
+<dialog id="dlg-handover" class="dlg">
+  <form id="form-handover" method="dialog">
+    <h3>職務交接</h3>
+    <p class="muted small">
+      把 <b id="ho-from"></b> 名下的計畫轉給另一位同仁。
+      移交後由新承辦人負責更新進度,計畫內容與歷程完全保留,並會留下交接紀錄。
+    </p>
+
+    <label class="field">
+      <span>移交給 <b class="req">*</b></span>
+      <select name="to" id="ho-to" required></select>
+    </label>
+
+    <div class="steps-head">
+      <h4>要移交的計畫</h4>
+      <label class="same-doc"><input type="checkbox" id="ho-all" checked><span>全選</span></label>
+    </div>
+    <div id="ho-plans" class="ho-plans"></div>
+
+    <p id="ho-error" class="status-line status-critical" hidden></p>
+    <div class="dlg-actions">
+      <button type="button" id="btn-ho-cancel" class="btn">取消</button>
+      <button type="submit" class="btn btn-primary" id="btn-ho-submit">移交</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- 成員編輯 -->
 <dialog id="dlg-member" class="dlg dlg-narrow">
   <form id="form-member" method="dialog">
@@ -307,6 +335,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=2026.08.08.4"></script>
+<script type="module" src="assets/app.js?v=2026.08.08.5"></script>
 </body>
 </html>

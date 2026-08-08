@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE
   // ?v= 一樣要跟著改版更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=2026.08.08.4";
+} from "./config.js?v=2026.08.08.5";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -380,6 +380,14 @@ const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.id, r.label]));
 const isAdmin = () => roleOf(state.member) === "admin";
 
 /**
+ * 權限一律以 Email 判定,不用 Firebase 的 uid。
+ * 因為職務交接時要把計畫轉給還沒登入過的同仁,那時候拿不到對方的 uid;
+ * Email 則是成員名單裡就有的穩定識別。
+ */
+const myEmail = () => (state.user?.email || "").toLowerCase();
+const isMine = (plan) => (plan.ownerEmail || "").toLowerCase() === myEmail();
+
+/**
  * 誰看得到這個計畫:組長只有自己的、主任加上同處室、管理員全部。
  * 資料層已經用查詢條件和安全規則擋過一次,這裡是第二道防線 ——
  * 萬一查詢或快取出問題,畫面也不會把別人的計畫顯示出來。
@@ -388,7 +396,7 @@ function canSee(plan) {
   if (!state.user || !state.member) return false;
   const role = roleOf(state.member);
   if (role === "admin") return true;
-  if (plan.ownerUid === state.user.uid) return true;
+  if (isMine(plan)) return true;
   if (role === "director") return plan.dept === state.member.dept;
   return false;
 }
@@ -399,8 +407,7 @@ function canSee(plan) {
  */
 function canEdit(plan) {
   if (!state.user || !state.member) return false;
-  if (plan.ownerUid === state.user.uid) return true;
-  return roleOf(state.member) === "admin";
+  return isMine(plan) || roleOf(state.member) === "admin";
 }
 
 /* ---------------- 登入流程 ---------------- */
@@ -497,10 +504,10 @@ function planQueries() {
   if (role === "director") {
     return [
       query(ref, where("dept", "==", state.member.dept || "")),
-      query(ref, where("ownerUid", "==", state.user.uid))
+      query(ref, where("ownerEmail", "==", myEmail()))
     ];
   }
-  return [query(ref, where("ownerUid", "==", state.user.uid))];
+  return [query(ref, where("ownerEmail", "==", myEmail()))];
 }
 
 function subscribeData() {
@@ -517,6 +524,7 @@ function subscribeData() {
     fillOwnerFilter();
     renderDashboard();
     renderMine();
+    renderMembers();   // 成員表的「名下計畫」件數會跟著計畫變動
     if (state.tab === "calendar") renderCalendar();
   };
 
@@ -581,10 +589,11 @@ function fillUnitSelect(sel, { placeholder } = {}) {
 }
 
 function fillOwnerFilter() {
-  const owners = [...new Set(state.plans.map((p) => p.ownerUid))]
-    .map((uid) => {
-      const p = state.plans.find((x) => x.ownerUid === uid);
-      return [uid, p?.ownerName || p?.ownerEmail || "未知"];
+  const owners = [...new Set(state.plans.map((p) => (p.ownerEmail || "").toLowerCase()))]
+    .filter(Boolean)
+    .map((email) => {
+      const p = state.plans.find((x) => (x.ownerEmail || "").toLowerCase() === email);
+      return [email, p?.ownerName || email];
     })
     .sort((a, b) => a[1].localeCompare(b[1], "zh-Hant"));
   fillSelect($("#f-owner"), owners, { placeholder: "全部" });
@@ -687,7 +696,7 @@ function applyFilters(plans) {
     if (stuck && !hasStuckDoc(p)) return false;
     if (year && String(p.year) !== year) return false;
     if (dept && p.dept !== dept) return false;
-    if (owner && p.ownerUid !== owner) return false;
+    if (owner && (p.ownerEmail || "").toLowerCase() !== owner) return false;
     if (unit && !unitsOf(p).includes(unit)) return false;
     if (stage && currentStage(p)?.id !== stage) return false;
     if (status && statusOf(p) !== status) return false;
@@ -903,6 +912,24 @@ function stepsHtml(plan, editable) {
   }).join("") + `</div>`;
 }
 
+/** 職務交接紀錄 */
+function handoverHtml(plan) {
+  const rows = plan.handovers || [];
+  if (!rows.length) return "";
+  return `
+    <div class="flow-log">
+      <div class="stage-group-head">職務交接紀錄</div>
+      <ol class="flow-list">
+        ${[...rows].reverse().map((h) => `
+          <li>
+            <span class="flow-date">${esc(h.date)}</span>
+            <span class="flow-move">${esc(h.fromName)} <span aria-hidden="true">→</span> <b>${esc(h.toName)}</b></span>
+            ${h.byName ? `<span class="muted">由 ${esc(h.byName)} 辦理</span>` : ""}
+          </li>`).join("")}
+      </ol>
+    </div>`;
+}
+
 /** 公文流轉紀錄 */
 function flowHtml(plan) {
   const flow = [...(plan.flow || [])].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -995,7 +1022,7 @@ function planCard(plan, { editable }) {
       <button class="toggle-steps" data-act="toggle" data-id="${esc(plan.id)}">
         ${open ? "▲ 收合明細" : `▼ 展開明細(${(plan.steps || []).length} 個步驟)`}
       </button>
-      ${open ? stepsHtml(plan, editable) + flowHtml(plan) : ""}
+      ${open ? stepsHtml(plan, editable) + flowHtml(plan) + handoverHtml(plan) : ""}
     </article>`;
 }
 
@@ -1009,7 +1036,7 @@ function renderDashboard() {
 }
 
 function renderMine() {
-  const mine = state.plans.filter((p) => p.ownerUid === state.user?.uid);
+  const mine = state.plans.filter(isMine);
   $("#mine-list").innerHTML = mine.length
     ? mine.map((p) => planCard(p, { editable: true })).join("")
     : `<div class="empty">你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。</div>`;
@@ -1132,27 +1159,123 @@ $("#cal-detail").addEventListener("click", (e) => {
   renderCalendar();
 });
 
+/** 某位成員名下的計畫 */
+const plansOwnedBy = (email) =>
+  state.plans.filter((p) => (p.ownerEmail || "").toLowerCase() === String(email).toLowerCase());
+
 function renderMembers() {
   const tbody = $("#members-table tbody");
   if (!tbody) return;
-  const active = new Set(state.plans.map((p) => (p.ownerEmail || "").toLowerCase()));
   const rows = [...state.members].sort((a, b) =>
     (a.dept || "").localeCompare(b.dept || "", "zh-Hant") || (a.name || "").localeCompare(b.name || "", "zh-Hant"));
 
-  tbody.innerHTML = rows.map((m) => `
+  tbody.innerHTML = rows.map((m) => {
+    const n = plansOwnedBy(m.email).length;
+    return `
     <tr>
       <td>${esc(m.name)}</td>
       <td>${esc(m.email)}</td>
       <td>${esc(m.dept || "")}</td>
       <td>${esc(m.title || "")}</td>
       <td>${esc(ROLE_LABEL[roleOf(m)])}</td>
-      <td>${active.has(m.email) ? "已使用" : "尚未建立計畫"}</td>
+      <td>${n ? `${n} 件` : "—"}</td>
       <td>
+        ${n ? `<button class="btn btn-sm" data-mact="handover" data-email="${esc(m.email)}">移交</button>` : ""}
         <button class="btn btn-sm" data-mact="edit" data-email="${esc(m.email)}">編輯</button>
         <button class="btn btn-sm btn-danger" data-mact="delete" data-email="${esc(m.email)}">移除</button>
       </td>
-    </tr>`).join("") || `<tr><td colspan="7" style="color:var(--text-secondary)">名單是空的。</td></tr>`;
+    </tr>`;
+  }).join("") || `<tr><td colspan="7" style="color:var(--text-secondary)">名單是空的。</td></tr>`;
 }
+
+/* ---------------- 職務交接 ---------------- */
+
+const dlgHo = $("#dlg-handover");
+const formHo = $("#form-handover");
+let handoverFrom = null;
+
+function openHandover(m) {
+  handoverFrom = m;
+  const plans = plansOwnedBy(m.email);
+  $("#ho-from").textContent = `${m.name}(${m.email})`;
+  show($("#ho-error"), false);
+
+  // 接手人選單:名單裡除了自己以外的人
+  fillSelect($("#ho-to"),
+    state.members.filter((x) => x.email !== m.email)
+      .map((x) => [x.email, `${x.name}・${x.dept || ""}${x.title ? "・" + x.title : ""}`]),
+    { placeholder: "請選擇接手的同仁" });
+  $("#ho-to").value = "";
+
+  $("#ho-plans").innerHTML = plans.map((p) => {
+    const st = STATUS_META[statusOf(p)];
+    return `
+      <label class="ho-row">
+        <input type="checkbox" class="ho-pick" value="${esc(p.id)}" checked>
+        <span class="ho-title">${esc(p.title)}</span>
+        <span class="muted small">${esc(p.dept)}・${p.year} 學年度</span>
+        <span class="badge ${st.cls}"><span aria-hidden="true">${st.icon}</span>${st.label}</span>
+      </label>`;
+  }).join("");
+  $("#ho-all").checked = true;
+  dlgHo.showModal();
+}
+
+$("#ho-all").addEventListener("change", (e) => {
+  $$(".ho-pick").forEach((c) => { c.checked = e.target.checked; });
+});
+
+$("#btn-ho-cancel").addEventListener("click", () => dlgHo.close());
+
+formHo.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = $("#ho-error");
+  show(err, false);
+
+  const toEmail = $("#ho-to").value;
+  const to = state.members.find((m) => m.email === toEmail);
+  const picked = $$(".ho-pick").filter((c) => c.checked).map((c) => c.value);
+
+  if (!to) { err.textContent = "請選擇要接手的同仁。"; show(err, true); return; }
+  if (!picked.length) { err.textContent = "請至少勾選一個計畫。"; show(err, true); return; }
+
+  const btn = $("#btn-ho-submit");
+  btn.disabled = true;
+  btn.textContent = "移交中…";
+
+  const entry = {
+    date: todayStr(),
+    fromName: handoverFrom.name, fromEmail: handoverFrom.email,
+    toName: to.name, toEmail: to.email,
+    byName: state.member?.name || ""
+  };
+
+  try {
+    // 一筆一筆更新;中途失敗要讓使用者知道已經轉了幾筆
+    let ok = 0;
+    for (const id of picked) {
+      const plan = state.plans.find((p) => p.id === id);
+      if (!plan) continue;
+      await updateDoc(doc(db, "plans", id), {
+        ownerEmail: to.email,
+        ownerName: to.name,
+        handovers: [...(plan.handovers || []), entry],
+        updatedAt: serverTimestamp()
+      });
+      ok++;
+    }
+    dlgHo.close();
+    alert(`已將 ${ok} 個計畫移交給 ${to.name}。`);
+  } catch (e2) {
+    err.textContent = e2.code === "permission-denied"
+      ? "移交失敗:資料庫拒絕寫入。請確認 Firestore 安全規則已更新為最新版本。"
+      : `移交失敗:${e2.message}`;
+    show(err, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "移交";
+  }
+});
 
 /* ---------------- 計畫卡互動 ---------------- */
 
@@ -1512,8 +1635,8 @@ formPlan.addEventListener("submit", async (e) => {
       await addDoc(collection(db, "plans"), {
         ...payload,
         flow: [],
-        ownerUid: state.user.uid,
-        ownerEmail: (state.user.email || "").toLowerCase(),
+        ownerUid: state.user.uid,     // 保留備查,權限判定看 ownerEmail
+        ownerEmail: myEmail(),
         ownerName: state.member?.name || state.user.displayName || "",
         createdAt: serverTimestamp()
       });
@@ -1570,11 +1693,15 @@ $("#members-table").addEventListener("click", async (e) => {
 
   if (btn.dataset.mact === "edit") {
     openMemberDialog(m);
+  } else if (btn.dataset.mact === "handover") {
+    openHandover(m);
   } else {
-    if (m.email === (state.user.email || "").toLowerCase()) {
+    if (m.email === myEmail()) {
       alert("不能移除自己,以免系統失去管理員。");
       return;
     }
+    const n = plansOwnedBy(m.email).length;
+    if (n && !confirm(`${m.name} 名下還有 ${n} 個計畫。\n移出名單後這些計畫會沒有人能維護,建議先按「移交」轉給接手的同仁。\n\n仍要移除嗎?`)) return;
     if (!confirm(`確定要把 ${m.name}(${m.email})移出名單嗎?\n該帳號將無法再登入,但已建立的計畫會保留。`)) return;
     try {
       await deleteDoc(doc(db, "allowlist", m.email));

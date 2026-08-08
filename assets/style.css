@@ -512,6 +512,17 @@ textarea { resize: vertical; }
 .cal-chip.is-done { opacity: .5; text-decoration: line-through; }
 .cal-more { font-size: .72rem; color: var(--text-muted); }
 
+/* 職務交接的計畫勾選清單 */
+.ho-plans { display: flex; flex-direction: column; }
+.ho-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 2px; border-bottom: 1px solid var(--hairline);
+  cursor: pointer; font-size: .9rem;
+}
+.ho-row:last-child { border-bottom: 0; }
+.ho-row input { width: auto; margin: 0; accent-color: var(--accent); }
+.ho-title { font-weight: 600; }
+
 .cal-detail { margin-top: 14px; }
 .cal-detail-head {
   display: flex; align-items: center; justify-content: space-between;

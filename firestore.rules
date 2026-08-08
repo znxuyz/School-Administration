@@ -33,8 +33,17 @@ service cloud.firestore {
         && exists(memberPath());
     }
 
+    function memberData() {
+      return get(memberPath()).data;
+    }
+
     function isAdmin() {
-      return isMember() && get(memberPath()).data.role == 'admin';
+      return isMember() && memberData().role == 'admin';
+    }
+
+    // 主任可以編輯同處室所有人的計畫
+    function isDirectorOf(dept) {
+      return isMember() && memberData().role == 'director' && memberData().dept == dept;
     }
 
     // ---------- 成員名單 ----------
@@ -47,7 +56,8 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.dept is string
-        && request.resource.data.role in ['teacher', 'admin'];
+        // teacher 是舊資料的角色名稱,程式會視為組長
+        && request.resource.data.role in ['staff', 'director', 'admin', 'teacher'];
 
       allow delete: if isAdmin();
     }
@@ -80,15 +90,19 @@ service cloud.firestore {
         && request.resource.data.ownerEmail == emailKey()
         && validPlan(request.resource.data);
 
-      // 自己的計畫可以改;管理者可以改所有人的。擁有者欄位一律不可竄改。
+      // 組長改自己的、主任改同處室的、管理員改全部。擁有者欄位一律不可竄改。
       allow update: if isMember()
-        && (resource.data.ownerUid == request.auth.uid || isAdmin())
+        && (resource.data.ownerUid == request.auth.uid
+            || isAdmin()
+            || isDirectorOf(resource.data.dept))
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.ownerEmail == resource.data.ownerEmail
         && validPlan(request.resource.data);
 
       allow delete: if isMember()
-        && (resource.data.ownerUid == request.auth.uid || isAdmin());
+        && (resource.data.ownerUid == request.auth.uid
+            || isAdmin()
+            || isDirectorOf(resource.data.dept));
     }
 
     // 其他路徑一律禁止

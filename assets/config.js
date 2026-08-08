@@ -14,6 +14,16 @@ export const firebaseConfig = {
 // 以下都可以自行增刪,改完存檔推上 GitHub,網站就會跟著更新。
 // ---------------------------------------------------------------
 
+// 成員角色。可見範圍都是全校(維持互相提醒),差別在能編輯的範圍。
+// 舊資料的 teacher 會自動視為 staff。
+export const ROLES = [
+  { id: "staff",    label: "組長",   desc: "可以編輯自己建立的計畫" },
+  { id: "director", label: "主任",   desc: "可以編輯同處室所有人的計畫" },
+  { id: "admin",    label: "管理員", desc: "可以編輯所有計畫,並維護成員名單" }
+];
+
+export const DEFAULT_ROLE = "staff";
+
 // 承辦計畫的處室(建立計畫時選)
 export const DEPARTMENTS = [
   "校長室",

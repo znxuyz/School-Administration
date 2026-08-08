@@ -31,7 +31,7 @@
     <h1>尚未取得使用權限</h1>
     <p class="muted">
       你的帳號 <strong id="denied-email"></strong> 不在系統的使用者名單中。
-      請聯絡系統管理者將你的 Email 加入名單後,再重新登入。
+      請聯絡系統管理員將你的 Email 加入名單後,再重新登入。
     </p>
     <button id="btn-signout-denied" class="btn">登出並更換帳號</button>
   </div>
@@ -207,7 +207,9 @@
     <p class="muted small">
       步驟名稱可以直接從欄位的下拉清單挑選常用項目,也可以自己打字。
       每個步驟要指定所屬階段,總覽頁就會顯示計畫走到哪一段。
-      公文送到哪裡不用在這裡設定 —— 建好之後在卡片上直接更新該份文件的位置就好。
+      <strong>步驟不用各自填日期</strong> —— 期限一律看上面的執行起訖日與結算期限,
+      步驟改成「進行中」之後就會自動幫你算已經進行幾天。
+      公文送到哪裡也不用在這裡設定,建好之後在卡片上直接更新該份文件的位置就好。
     </p>
     <div id="steps-editor" class="steps-editor"></div>
 
@@ -243,12 +245,13 @@
       </label>
     </div>
     <label class="field">
-      <span>權限</span>
-      <select name="role">
-        <option value="teacher">一般成員(只能編輯自己的計畫)</option>
-        <option value="admin">管理者(可管理成員與所有計畫)</option>
-      </select>
+      <span>角色</span>
+      <select name="role" id="member-role"></select>
+      <small class="hint" id="role-hint"></small>
     </label>
+    <p class="muted small">
+      三種角色都看得到全校的計畫進度,差別只在能編輯的範圍。
+    </p>
     <p id="member-error" class="status-line status-critical" hidden></p>
     <div class="dlg-actions">
       <button type="button" id="btn-member-cancel" class="btn">取消</button>

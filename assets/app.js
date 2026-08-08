@@ -13,7 +13,8 @@ import {
 import {
   firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS,
   UNIT_GROUPS, ALL_UNITS, DEFAULT_UNIT,
-  STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES
+  STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
+  ROLES, DEFAULT_ROLE
 } from "./config.js";
 
 const app = initializeApp(firebaseConfig);
@@ -257,8 +258,28 @@ const state = {
   unsubscribe: []
 };
 
-const isAdmin = () => state.member?.role === "admin";
-const canEdit = (plan) => plan.ownerUid === state.user?.uid || isAdmin();
+/** 舊資料的 teacher 一律視為組長 */
+const roleOf = (m) => {
+  const r = m?.role;
+  return ROLES.some((x) => x.id === r) ? r : DEFAULT_ROLE;
+};
+const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.id, r.label]));
+
+const isAdmin = () => roleOf(state.member) === "admin";
+
+/**
+ * 誰能編輯這個計畫:
+ *   組長 → 自己建立的;主任 → 同處室所有人的;管理員 → 全部。
+ * 可見範圍不受角色影響,全校都看得到彼此的進度。
+ */
+function canEdit(plan) {
+  if (!state.user || !state.member) return false;
+  if (plan.ownerUid === state.user.uid) return true;
+  const role = roleOf(state.member);
+  if (role === "admin") return true;
+  if (role === "director") return plan.dept === state.member.dept;
+  return false;
+}
 
 /* ---------------- 登入流程 ---------------- */
 
@@ -274,7 +295,7 @@ $("#btn-signin").addEventListener("click", async () => {
   } catch (e) {
     if (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
     err.textContent = e.code === "auth/unauthorized-domain"
-      ? "這個網址尚未被加入 Firebase 的授權網域,請聯絡系統管理者。"
+      ? "這個網址尚未被加入 Firebase 的授權網域,請聯絡系統管理員。"
       : `登入失敗:${e.message}`;
     show(err, true);
   }
@@ -314,7 +335,8 @@ onAuthStateChanged(auth, async (user) => {
 
   state.member = snap.data();
   $("#user-name").textContent =
-    `${state.member.name}${state.member.dept ? "・" + state.member.dept : ""}`;
+    `${state.member.name}${state.member.dept ? "・" + state.member.dept : ""}` +
+    `(${ROLE_LABEL[roleOf(state.member)]})`;
   $$(".admin-only").forEach((el) => { el.hidden = !isAdmin(); });
 
   showView("app");
@@ -412,8 +434,14 @@ function initSelects() {
   fillSelect($("#plan-template"), TEMPLATES.map((t) => [t.id, t.label]));
 
   fillSelect($('#form-member select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
+  fillSelect($("#member-role"), ROLES.map((r) => [r.id, r.label]));
 }
 initSelects();
+
+// 選角色時把說明帶出來
+$("#member-role").addEventListener("change", (e) => {
+  $("#role-hint").textContent = ROLES.find((r) => r.id === e.target.value)?.desc || "";
+});
 
 /* ---------------- 篩選列 ---------------- */
 
@@ -545,7 +573,13 @@ function stepRowHtml(plan, s, editable, inBundle) {
     dueHtml = `<span class="${cls}">期限 ${esc(due)}${src}${tail}</span>`;
   }
 
+  // 進行中的步驟改用「已進行 N 天」,不需要每個步驟各自填日期
+  const running = s.status === "doing" && s.startedAt
+    ? `<span class="running">已進行 ${daysBetween(s.startedAt, today)} 天(${esc(s.startedAt)} 起)</span>`
+    : "";
+
   const sub = [
+    running,
     dueHtml,
     na ? `<span class="na-note">本次不需要辦理</span>` : "",
     s.status === "done" && s.doneAt ? `<span class="done-at">✓ ${esc(s.doneAt)} 完成</span>` : "",
@@ -754,7 +788,7 @@ function renderMembers() {
       <td>${esc(m.email)}</td>
       <td>${esc(m.dept || "")}</td>
       <td>${esc(m.title || "")}</td>
-      <td>${m.role === "admin" ? "管理者" : "一般成員"}</td>
+      <td>${esc(ROLE_LABEL[roleOf(m)])}</td>
       <td>${active.has(m.email) ? "已使用" : "尚未建立計畫"}</td>
       <td>
         <button class="btn btn-sm" data-mact="edit" data-email="${esc(m.email)}">編輯</button>
@@ -808,8 +842,15 @@ document.addEventListener("change", async (e) => {
   const steps = all.map((s, i) => {
     if (!targets.includes(i)) return s;
     if (isLoc) return { ...s, location: sel.value };
-    // 標記完成時記下完成日期,改成其他狀態就清掉
-    return { ...s, status: sel.value, doneAt: sel.value === "done" ? todayStr() : "" };
+    const v = sel.value;
+    return {
+      ...s,
+      status: v,
+      // 標記完成時記下完成日期,改成其他狀態就清掉
+      doneAt: v === "done" ? todayStr() : "",
+      // 第一次變成進行中時記下起算日,退回未開始則重來
+      startedAt: v === "doing" ? (s.startedAt || todayStr()) : (v === "todo" ? "" : s.startedAt || "")
+    };
   });
 
   // 一個步驟完成後,自動把後面第一個「未開始」的步驟接成「進行中」
@@ -817,7 +858,7 @@ document.addEventListener("change", async (e) => {
   if (!isLoc && sel.value === "done") {
     const idx = targets[0];
     const next = steps.findIndex((s, i) => i > idx && s.status === "todo");
-    if (next !== -1) steps[next] = { ...steps[next], status: "doing" };
+    if (next !== -1) steps[next] = { ...steps[next], status: "doing", startedAt: todayStr() };
   }
 
   const patch = { steps, updatedAt: serverTimestamp() };
@@ -866,7 +907,6 @@ function renderStepEditor() {
       </select>
       <input value="${esc(s.title)}" data-k="title" list="sug-${stageOf(s)}"
              placeholder="輸入或從清單選擇" maxlength="80" aria-label="步驟名稱">
-      <input value="${esc(s.due || "")}" data-k="due" type="date" aria-label="步驟期限">
       <select data-k="status" aria-label="步驟狀態">
         ${STEP_STATUSES.map((v) =>
           `<option value="${v}"${s.status === v ? " selected" : ""}>${STEP_LABEL[v]}</option>`).join("")}
@@ -906,7 +946,7 @@ $("#steps-editor").addEventListener("change", (e) => {
   if (k === "stage") renderStepEditor();
 });
 
-const blankStep = (stage) => ({ title: "", due: "", status: "todo", note: "", stage, bundleWithPrev: false });
+const blankStep = (stage) => ({ title: "", status: "todo", note: "", stage, bundleWithPrev: false });
 
 /** 把焦點放到第 n 列的名稱欄位,插入後可以直接打字 */
 function focusStepRow(n) {
@@ -959,7 +999,7 @@ $("#btn-add-step").addEventListener("click", () => {
 function applyTemplate(tpl) {
   // 第一個步驟預設就是「進行中」,後面全部「未開始」
   draftSteps = tpl.steps.map((s, i) => ({
-    ...s, due: "", note: "", status: i === 0 ? "doing" : "todo"
+    ...s, note: "", status: i === 0 ? "doing" : "todo"
   }));
   draftTouched = false;          // 範本原封不動,還不算使用者的心血
   lastTemplateId = tpl.id;
@@ -1033,17 +1073,22 @@ formPlan.addEventListener("submit", async (e) => {
   // 依階段順序整理,存進資料庫的陣列就是照流程排好的
   const steps = draftSteps
     .filter((s) => s.title.trim())
-    .map((s) => ({
-      title: s.title.trim(),
-      stage: stageOf(s),
-      due: s.due || "",
-      status: STEP_STATUSES.includes(s.status) ? s.status : "todo",
-      note: (s.note || "").trim(),
-      bundleWithPrev: !!s.bundleWithPrev,
-      // 這兩個欄位是在卡片上維護的,編輯計畫時要原封帶回去,不能被洗掉
-      location: s.location || "",
-      doneAt: s.doneAt || ""
-    }))
+    .map((s) => {
+      const status = STEP_STATUSES.includes(s.status) ? s.status : "todo";
+      return {
+        title: s.title.trim(),
+        stage: stageOf(s),
+        status,
+        note: (s.note || "").trim(),
+        bundleWithPrev: !!s.bundleWithPrev,
+        // 步驟不再各自填期限,但舊資料若有就保留,判逾期時仍會優先採用
+        due: s.due || "",
+        // 以下都是在卡片上維護的,編輯計畫時要原封帶回去,不能被洗掉
+        location: s.location || "",
+        doneAt: s.doneAt || "",
+        startedAt: status === "doing" ? (s.startedAt || todayStr()) : (s.startedAt || "")
+      };
+    })
     .sort((a, b) => STAGE_IDS.indexOf(a.stage) - STAGE_IDS.indexOf(b.stage));
 
   const startDate = pf("startDate").value || "";
@@ -1112,7 +1157,8 @@ function openMemberDialog(m) {
   mf("name").value = m?.name || "";
   mf("dept").value = m?.dept || "";
   mf("title").value = m?.title || "";
-  mf("role").value = m?.role || "teacher";
+  mf("role").value = roleOf(m);
+  $("#role-hint").textContent = ROLES.find((r) => r.id === roleOf(m))?.desc || "";
   dlgMember.showModal();
 }
 
@@ -1129,7 +1175,7 @@ $("#members-table").addEventListener("click", async (e) => {
     openMemberDialog(m);
   } else {
     if (m.email === (state.user.email || "").toLowerCase()) {
-      alert("不能移除自己,以免系統失去管理者。");
+      alert("不能移除自己,以免系統失去管理員。");
       return;
     }
     if (!confirm(`確定要把 ${m.name}(${m.email})移出名單嗎?\n該帳號將無法再登入,但已建立的計畫會保留。`)) return;
@@ -1151,7 +1197,7 @@ formMember.addEventListener("submit", async (e) => {
     name: mf("name").value.trim(),
     dept: mf("dept").value,
     title: mf("title").value.trim(),
-    role: mf("role").value === "admin" ? "admin" : "teacher"
+    role: ROLES.some((r) => r.id === mf("role").value) ? mf("role").value : DEFAULT_ROLE
   };
 
   if (!email || !data.name || !data.dept) {

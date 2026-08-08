@@ -144,6 +144,40 @@ function documentsOut(plan) {
   }));
 }
 
+/**
+ * 複製到新學年時把標題裡的學年度換掉:
+ * 「114 學年度課程計畫備查」複製到 115 就變成「115 學年度課程計畫備查」。
+ * 先找「數字 + 學年」的寫法,找不到才退而求其次換獨立出現的數字。
+ */
+function retitleForYear(title, from, to) {
+  const t = String(title || "");
+  if (!to) return t;
+
+  // 1. 標題裡就是來源學年度的寫法
+  if (from && from !== to && new RegExp(`${from}\\s*學年`).test(t)) {
+    return t.replace(new RegExp(`${from}(\\s*學年)`, "g"), `${to}$1`);
+  }
+  // 2. 標題的學年度和 year 欄位對不起來時,換掉任何「數字 + 學年」
+  if (/\d{2,3}\s*學年/.test(t)) return t.replace(/\d{2,3}(\s*學年)/g, `${to}$1`);
+  // 3. 標題沒寫「學年」,才退而求其次換獨立出現的來源年度數字
+  if (from && from !== to) return t.replace(new RegExp(`\\b${from}\\b`, "g"), String(to));
+  return t;
+}
+
+/**
+ * 複製計畫時重設步驟:保留名稱、階段、批次設定,
+ * 但進度、公文位置、日期全部歸零,第一個步驟直接設為進行中。
+ */
+function resetStepsForCopy(steps) {
+  return (steps || []).map((s, i) => ({
+    title: s.title,
+    stage: stageOf(s),
+    status: i === 0 ? "doing" : "todo",
+    bundleWithPrev: !!s.bundleWithPrev,
+    note: "", due: "", location: "", doneAt: "", startedAt: ""
+  }));
+}
+
 /** 把同一階段內「與上一個一起送」的步驟合併成一批公文 */
 function groupBundles(rows) {
   const out = [];
@@ -742,6 +776,8 @@ function planCard(plan, { editable }) {
         </div>
         <div class="plan-actions">
           <span class="badge ${meta.cls}"><span aria-hidden="true">${meta.icon}</span>${meta.label}</span>
+          <button class="btn btn-sm" data-act="copy" data-id="${esc(plan.id)}"
+                  title="以這個計畫為範本,複製一份到新學年">複製</button>
           ${editable ? `
             <button class="btn btn-sm" data-act="edit" data-id="${esc(plan.id)}">編輯</button>
             <button class="btn btn-sm btn-danger" data-act="delete" data-id="${esc(plan.id)}">刪除</button>` : ""}
@@ -812,6 +848,8 @@ document.addEventListener("click", async (e) => {
     renderMine();
   } else if (act === "edit") {
     openPlanDialog(plan);
+  } else if (act === "copy") {
+    openPlanDialog(plan, { copy: true });
   } else if (act === "delete") {
     if (!confirm(`確定要刪除「${plan.title}」嗎?此動作無法復原。`)) return;
     try {
@@ -1030,28 +1068,44 @@ function updateSettlementHint() {
 }
 $('#form-plan input[name="endDate"]').addEventListener("input", updateSettlementHint);
 
-function openPlanDialog(plan) {
-  editingPlanId = plan?.id || null;
-  $("#dlg-plan-title").textContent = plan ? "編輯計畫" : "新增計畫";
+/**
+ * plan 為空 → 新增;copy 為 true → 以 plan 為範本複製一份新的(不會動到原計畫)。
+ */
+function openPlanDialog(plan, { copy = false } = {}) {
+  const isCopy = !!(plan && copy);
+  editingPlanId = isCopy ? null : (plan?.id || null);
+
+  $("#dlg-plan-title").textContent = isCopy ? "複製計畫到新學年" : (plan ? "編輯計畫" : "新增計畫");
   show($("#plan-error"), false);
+  show($("#copy-hint"), isCopy);
   formPlan.reset();
 
-  // 範本只在新增時提供,編輯既有計畫時隱藏以免誤觸覆蓋
+  // 範本只在從頭新增時提供;編輯或複製都已經有步驟來源,顯示出來只會誤觸覆蓋
   show($("#template-field"), !plan);
   $("#template-hint").textContent = "";
 
-  pf("title").value = plan?.title || "";
+  // 複製時學年度往後推一年(不超過選單上限),標題裡的學年度也一起換掉
+  const newYear = isCopy
+    ? Math.min(Number(plan.year) + 1, currentAcademicYear() + 1)
+    : (plan?.year ?? currentAcademicYear());
+
+  pf("title").value = isCopy ? retitleForYear(plan.title, plan.year, newYear) : (plan?.title || "");
   pf("dept").value = plan?.dept || state.member?.dept || "";
-  pf("year").value = String(plan?.year ?? currentAcademicYear());
+  pf("year").value = String(newYear);
   pf("term").value = String(plan?.term ?? "1");
-  pf("startDate").value = plan?.startDate || "";
-  pf("endDate").value = plan?.endDate || deadlineOf(plan || {}) || "";
-  pf("budget").value = plan?.budget || "";
-  pf("driveUrl").value = plan?.driveUrl || "";
-  pf("note").value = plan?.note || "";
+  // 複製時日期、經費、雲端連結都要重填,不能沿用去年的
+  pf("startDate").value = isCopy ? "" : (plan?.startDate || "");
+  pf("endDate").value = isCopy ? "" : (plan?.endDate || deadlineOf(plan || {}) || "");
+  pf("budget").value = isCopy ? "" : (plan?.budget || "");
+  pf("driveUrl").value = isCopy ? "" : (plan?.driveUrl || "");
+  pf("note").value = plan?.note || "";      // 計畫依據之類的說明通常可以沿用
   updateSettlementHint();
 
-  if (plan) {
+  if (isCopy) {
+    draftSteps = resetStepsForCopy(plan.steps);
+    draftTouched = true;
+    renderStepEditor();
+  } else if (plan) {
     draftSteps = (plan.steps || []).map((s) => ({ ...s, stage: stageOf(s) }));
     draftTouched = true;         // 既有計畫的步驟一律當成不可隨意覆蓋
     renderStepEditor();
@@ -1131,6 +1185,12 @@ formPlan.addEventListener("submit", async (e) => {
         ownerName: state.member?.name || state.user.displayName || "",
         createdAt: serverTimestamp()
       });
+    }
+    // 存到別的學年度時把篩選切過去,不然剛建好的計畫會被目前的學年篩選擋住
+    if (state.filters.year && state.filters.year !== String(payload.year)) {
+      state.filters.year = String(payload.year);
+      $("#f-year").value = state.filters.year;
+      renderDashboard();
     }
     dlgPlan.close();
   } catch (e2) {

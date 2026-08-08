@@ -497,6 +497,7 @@ textarea { resize: vertical; }
   font-size: .88rem; padding: 8px 12px; border-radius: 8px; margin: 12px 0 0;
 }
 .status-critical { background: var(--critical-track); color: var(--text-primary); }
+.status-info { background: var(--accent-wash); color: var(--text-secondary); }
 
 @media (max-width: 720px) {
   .grid-2 { grid-template-columns: 1fr; }

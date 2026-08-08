@@ -15,8 +15,8 @@ import {
   UNIT_GROUPS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
-  // ?v= 一樣要跟著改版更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=2026.08.08.7";
+  // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
+} from "./config.js?v=8";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -569,6 +569,7 @@ function subscribeData() {
     state.plans = [...byId.values()]
       .filter(canSee)              // 第二道防線,見 canSee 的說明
       .sort((a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0));
+    fillYearSelects();     // 學年度選單要包含資料裡實際出現過的年度
     fillOwnerFilter();
     renderDashboard();
     renderMine();
@@ -614,9 +615,22 @@ $$(".tab").forEach((btn) => btn.addEventListener("click", () => setTab(btn.datas
 
 /* ---------------- 選單填充 ---------------- */
 
+/**
+ * 學年度選單:以今天推算的近幾年為底,再併入資料裡實際出現過的學年。
+ * 這樣每年會自動往前推進,而且舊學年不會因為年代久遠就從選單消失。
+ */
 function yearOptions() {
   const y = currentAcademicYear();
-  return [y + 1, y, y - 1, y - 2, y - 3];
+  const fromData = state.plans.map((p) => Number(p.year)).filter((n) => Number.isFinite(n));
+  return [...new Set([y + 1, y, y - 1, y - 2, y - 3, ...fromData])].sort((a, b) => b - a);
+}
+
+/** 學年度選單會隨資料變動,計畫載入後要重新產生 */
+function fillYearSelects() {
+  const opts = yearOptions().map((y) => [String(y), `${y} 學年度`]);
+  fillSelect($("#f-year"), opts, { placeholder: "全部學年" });
+  $("#f-year").value = state.filters.year;
+  fillSelect($('#form-plan select[name="year"]'), opts);
 }
 
 function optionsHtml(items) {
@@ -670,14 +684,12 @@ function buildDatalists() {
 function initSelects() {
   buildDatalists();
 
-  fillSelect($("#f-year"), yearOptions().map((y) => [String(y), `${y} 學年度`]), { placeholder: "全部學年" });
-  $("#f-year").value = state.filters.year;
+  fillYearSelects();
   fillSelect($("#f-dept"), DEPARTMENTS, { placeholder: "全部" });
   fillSelect($("#f-stage"), STAGES.map((s) => [s.id, s.label]), { placeholder: "全部" });
   fillUnitSelect($("#f-unit"), { placeholder: "全部" });
 
   fillSelect($('#form-plan select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
-  fillSelect($('#form-plan select[name="year"]'), yearOptions().map((y) => [String(y), `${y} 學年度`]));
   fillSelect($("#plan-template"), TEMPLATES.map((t) => [t.id, t.label]));
   fillSelect($('#form-plan select[name="recurring"]'), RECURRENCES.map((r) => [r.id, r.label]));
 
@@ -685,7 +697,7 @@ function initSelects() {
   fillSelect($("#member-role"), ROLES.map((r) => [r.id, r.label]));
 }
 initSelects();
-$("#app-version").textContent = `v${APP_VERSION}`;
+$("#app-version").textContent = APP_VERSION;   // APP_VERSION 本身就含有 v 開頭
 
 // 註冊 service worker,讓系統可以「加到主畫面」、沒網路時也開得起來。
 // 失敗不影響使用(例如用 file:// 開啟時),所以直接忽略錯誤。

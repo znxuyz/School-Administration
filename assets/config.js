@@ -1,7 +1,18 @@
-// 版本號。每次改版都要往上加,並且同步修改 index.html 裡
-// assets/app.js?v= 與 assets/style.css?v= 的數字,
+// ---------------------------------------------------------------
+// 版本號:改版時只要把 APP_BUILD 加一,代號會自動往下一座山推進。
+// 別忘了執行 ./bump.sh <新的號碼> 讓 index.html 與 sw.js 一起更新,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
-export const APP_VERSION = "2026.08.08.7";
+// ---------------------------------------------------------------
+export const APP_BUILD = 8;
+
+// 每一版的代號,取自台灣百岳。用完會從頭再輪一次。
+export const CODENAMES = [
+  "玉山", "雪山", "秀姑巒山", "馬博拉斯山", "南湖大山", "中央尖山",
+  "大霸尖山", "關山", "奇萊主山", "向陽山", "三叉山", "合歡山"
+];
+
+export const APP_CODENAME = CODENAMES[(APP_BUILD - 1) % CODENAMES.length];
+export const APP_VERSION = `v${APP_BUILD}・${APP_CODENAME}`;
 
 // Firebase 專案設定。
 // 這段設定屬於公開資訊,放在前端是 Firebase 的正常用法;

@@ -302,17 +302,13 @@ const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.id, r.label]));
 const isAdmin = () => roleOf(state.member) === "admin";
 
 /**
- * 誰能編輯這個計畫:
- *   組長 → 自己建立的;主任 → 同處室所有人的;管理員 → 全部。
- * 可見範圍不受角色影響,全校都看得到彼此的進度。
+ * 誰能編輯這個計畫:只有承辦人自己和管理員。
+ * 主任看得到同處室的計畫,但不能代為修改 —— 責任歸屬留給承辦人。
  */
 function canEdit(plan) {
   if (!state.user || !state.member) return false;
   if (plan.ownerUid === state.user.uid) return true;
-  const role = roleOf(state.member);
-  if (role === "admin") return true;
-  if (role === "director") return plan.dept === state.member.dept;
-  return false;
+  return roleOf(state.member) === "admin";
 }
 
 /* ---------------- 登入流程 ---------------- */
@@ -323,7 +319,8 @@ function applyScopeLabels() {
   const dept = state.member?.dept || "";
   const map = {
     admin: ["全校行政工作總覽", "全校同仁的行政計畫進度都在這裡,逾期與久未更新的工作會被標示出來。"],
-    director: [`${dept}工作總覽`, `你是${dept}主任,這裡列出${dept}所有同仁的計畫;其他處室的計畫不會顯示。`],
+    director: [`${dept}工作總覽`,
+      `你是${dept}主任,這裡列出${dept}所有同仁的計畫供你掌握進度;其他處室不會顯示,他人的計畫也只能檢視、不能修改。`],
     staff: ["我的工作總覽", "這裡列出你自己建立的計畫。若要看同處室其他人的進度,請洽處室主任。"]
   };
   const [title, desc] = map[role] || map.staff;

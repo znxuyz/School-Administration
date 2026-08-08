@@ -18,7 +18,7 @@ export const firebaseConfig = {
 // 舊資料的 teacher 會自動視為 staff。
 export const ROLES = [
   { id: "staff",    label: "組長",   desc: "只看得到、也只能編輯自己建立的計畫" },
-  { id: "director", label: "主任",   desc: "看得到並可編輯同處室所有人的計畫" },
+  { id: "director", label: "主任",   desc: "看得到同處室所有人的計畫,但只能編輯自己的" },
   { id: "admin",    label: "管理員", desc: "看得到並可編輯全校計畫,並維護成員名單" }
 ];
 
@@ -26,27 +26,24 @@ export const DEFAULT_ROLE = "staff";
 
 // 承辦計畫的處室(建立計畫時選)
 export const DEPARTMENTS = [
-  "校長室",
-  "教導處",
   "教務處",
   "學務處",
   "總務處",
   "輔導室",
   "人事室",
-  "會計室",
-  "幼兒園",
-  "其他"
+  "主計室"
 ];
 
 // 公文可能流到的單位。分成校內與校外兩組,顯示時會分群。
+// 校長室不承辦計畫,但公文會送去核可,所以只出現在這裡。
 export const UNIT_GROUPS = [
   {
     label: "承辦人",
     units: ["承辦人手上"]
   },
   {
-    label: "校內處室",
-    units: ["校長室", "教導處", "教務處", "學務處", "總務處", "輔導室", "人事室", "會計室", "幼兒園"]
+    label: "校內",
+    units: ["校長室", "教務處", "學務處", "總務處", "輔導室", "人事室", "主計室"]
   },
   {
     label: "校外單位",

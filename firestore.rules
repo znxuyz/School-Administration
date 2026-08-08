@@ -41,7 +41,7 @@ service cloud.firestore {
       return isMember() && memberData().role == 'admin';
     }
 
-    // 主任可以編輯同處室所有人的計畫
+    // 主任看得到同處室的計畫(唯讀,不能代為修改)
     function isDirectorOf(dept) {
       return isMember() && memberData().role == 'director' && memberData().dept == dept;
     }
@@ -94,19 +94,16 @@ service cloud.firestore {
         && request.resource.data.ownerEmail == emailKey()
         && validPlan(request.resource.data);
 
-      // 組長改自己的、主任改同處室的、管理員改全部。擁有者欄位一律不可竄改。
+      // 只有承辦人自己和管理員能改。主任看得到但不能代為修改。
+      // 擁有者欄位一律不可竄改。
       allow update: if isMember()
-        && (resource.data.ownerUid == request.auth.uid
-            || isAdmin()
-            || isDirectorOf(resource.data.dept))
+        && (resource.data.ownerUid == request.auth.uid || isAdmin())
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.ownerEmail == resource.data.ownerEmail
         && validPlan(request.resource.data);
 
       allow delete: if isMember()
-        && (resource.data.ownerUid == request.auth.uid
-            || isAdmin()
-            || isDirectorOf(resource.data.dept));
+        && (resource.data.ownerUid == request.auth.uid || isAdmin());
     }
 
     // 其他路徑一律禁止

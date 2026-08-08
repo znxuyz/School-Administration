@@ -1,7 +1,7 @@
 // 版本號。每次改版都要往上加,並且同步修改 index.html 裡
 // assets/app.js?v= 與 assets/style.css?v= 的數字,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
-export const APP_VERSION = "2026.08.08.5";
+export const APP_VERSION = "2026.08.08.6";
 
 // Firebase 專案設定。
 // 這段設定屬於公開資訊,放在前端是 Firebase 的正常用法;
@@ -56,7 +56,6 @@ export const UNIT_GROUPS = [
   }
 ];
 
-export const ALL_UNITS = UNIT_GROUPS.flatMap((g) => g.units);
 export const DEFAULT_UNIT = "承辦人手上";
 
 // 行政計畫的四個固定階段

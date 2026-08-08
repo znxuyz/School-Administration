@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記,改版時要和 config.js 的 APP_VERSION、sw.js 的 VERSION 一起更新,
      否則瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=2026.08.08.5">
+<link rel="stylesheet" href="assets/style.css?v=2026.08.08.6">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -44,6 +44,11 @@
     <p class="muted">
       你的帳號 <strong id="denied-email"></strong> 不在系統的使用者名單中。
       請聯絡系統管理員將你的 Email 加入名單後,再重新登入。
+    </p>
+    <p id="denied-rules" class="status-line status-critical" hidden>
+      系統讀取名單時被資料庫拒絕。如果<strong>所有人</strong>都進不來,
+      多半是 Firestore 安全規則還是舊版本,請把專案裡的 <code>firestore.rules</code>
+      重新貼到 Firebase 主控台並發布。
     </p>
     <button id="btn-signout-denied" class="btn">登出並更換帳號</button>
   </div>
@@ -142,7 +147,7 @@
       </div>
 
       <div class="cal-legend" id="cal-legend"></div>
-      <div class="cal-grid" id="cal-grid" role="grid" aria-label="月曆"></div>
+      <div class="cal-grid" id="cal-grid" role="group" aria-label="月曆"></div>
       <div id="cal-detail" class="cal-detail"></div>
     </section>
 
@@ -335,6 +340,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=2026.08.08.5"></script>
+<script type="module" src="assets/app.js?v=2026.08.08.6"></script>
 </body>
 </html>

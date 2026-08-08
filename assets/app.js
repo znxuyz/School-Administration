@@ -12,11 +12,11 @@ import {
 
 import {
   APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
-  UNIT_GROUPS, ALL_UNITS, DEFAULT_UNIT,
+  UNIT_GROUPS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE
   // ?v= 一樣要跟著改版更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=2026.08.08.5";
+} from "./config.js?v=2026.08.08.6";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -360,6 +360,7 @@ const state = {
   member: null,      // allowlist 中的成員資料
   plans: [],
   members: [],
+  loadError: "",     // 讀取失敗時顯示在總覽上,不要讓老師只看到空白
   tab: "dashboard",
   expanded: new Set(),          // 展開步驟的計畫 id
   cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
@@ -463,16 +464,19 @@ onAuthStateChanged(auth, async (user) => {
   state.user = user;
   const email = (user.email || "").toLowerCase();
 
-  let snap;
+  let snap, readErr = null;
   try {
     snap = await getDoc(doc(db, "allowlist", email));
-  } catch {
-    // 讀取被規則擋下,一樣視為未授權
+  } catch (e) {
+    // 讀取被規則擋下,一樣視為未授權,但要記下原因
+    readErr = e;
     snap = { exists: () => false };
   }
 
   if (!snap.exists()) {
     $("#denied-email").textContent = user.email || "";
+    // 規則沒更新時所有人都會被擋在門外,要講清楚免得誤以為是名單問題
+    show($("#denied-rules"), readErr?.code === "permission-denied");
     showView("denied");
     return;
   }
@@ -524,15 +528,23 @@ function subscribeData() {
     fillOwnerFilter();
     renderDashboard();
     renderMine();
-    renderMembers();   // 成員表的「名下計畫」件數會跟著計畫變動
+    if (isAdmin()) renderMembers();   // 成員表的「名下計畫」件數會跟著計畫變動
     if (state.tab === "calendar") renderCalendar();
   };
 
   queries.forEach((q, i) => {
     state.unsubscribe.push(onSnapshot(q, (snap) => {
       buckets[i] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      state.loadError = "";
       merge();
-    }, (e) => console.error("讀取計畫失敗", e)));
+    }, (e) => {
+      console.error("讀取計畫失敗", e);
+      // 不要讓老師只看到空白畫面,把原因說出來
+      state.loadError = e.code === "permission-denied"
+        ? "資料庫拒絕讀取。多半是 Firestore 安全規則還是舊版本,請把專案裡的 firestore.rules 重新貼到 Firebase 主控台並發布。"
+        : `讀取計畫失敗:${e.message}`;
+      renderDashboard();
+    }));
   });
 
   // 成員名單只有管理員的畫面用得到
@@ -597,6 +609,13 @@ function fillOwnerFilter() {
     })
     .sort((a, b) => a[1].localeCompare(b[1], "zh-Hant"));
   fillSelect($("#f-owner"), owners, { placeholder: "全部" });
+
+  // 選單裡已經沒有這個人了(例如計畫全部移交出去),把篩選清掉,
+  // 否則畫面會永遠空白而且看不出原因
+  if (state.filters.owner && !owners.some(([email]) => email === state.filters.owner)) {
+    state.filters.owner = "";
+    $("#f-owner").value = "";
+  }
 }
 
 function buildDatalists() {
@@ -642,10 +661,17 @@ const FILTER_FIELDS = {
   year: "#f-year", dept: "#f-dept", owner: "#f-owner",
   stage: "#f-stage", unit: "#f-unit", status: "#f-status", q: "#f-q"
 };
+let searchTimer;
 for (const [key, sel] of Object.entries(FILTER_FIELDS)) {
   $(sel).addEventListener("input", (e) => {
     state.filters[key] = e.target.value;
-    renderDashboard();
+    if (key === "q") {
+      // 搜尋是逐字輸入,稍等一下再重繪,免得每按一鍵就重建整份清單
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderDashboard, 200);
+    } else {
+      renderDashboard();
+    }
   });
 }
 // 點統計磚等同於切換狀態篩選;再點一次取消
@@ -1030,6 +1056,12 @@ function renderDashboard() {
   const plans = applyFilters(state.plans);
   syncFilterBox();
   renderStats(plans);
+
+  if (state.loadError) {
+    $("#dashboard-list").innerHTML =
+      `<div class="status-line status-critical">${esc(state.loadError)}</div>`;
+    return;
+  }
   $("#dashboard-list").innerHTML = plans.length
     ? plans.map((p) => planCard(p, { editable: canEdit(p) })).join("")
     : `<div class="empty">目前沒有符合篩選條件的計畫。</div>`;

@@ -7,7 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, query, orderBy, serverTimestamp
+  onSnapshot, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 import {
@@ -317,6 +317,20 @@ function canEdit(plan) {
 
 /* ---------------- 登入流程 ---------------- */
 
+/** 總覽的標題要照角色講清楚看得到的範圍,免得以為資料掉了 */
+function applyScopeLabels() {
+  const role = roleOf(state.member);
+  const dept = state.member?.dept || "";
+  const map = {
+    admin: ["全校行政工作總覽", "全校同仁的行政計畫進度都在這裡,逾期與久未更新的工作會被標示出來。"],
+    director: [`${dept}工作總覽`, `你是${dept}主任,這裡列出${dept}所有同仁的計畫;其他處室的計畫不會顯示。`],
+    staff: ["我的工作總覽", "這裡列出你自己建立的計畫。若要看同處室其他人的進度,請洽處室主任。"]
+  };
+  const [title, desc] = map[role] || map.staff;
+  $("#dashboard-title").textContent = title;
+  $("#dashboard-desc").textContent = desc;
+}
+
 function showView(name) {
   for (const v of ["loading", "login", "denied", "app"]) show($(`#view-${v}`), v === name);
 }
@@ -373,6 +387,7 @@ onAuthStateChanged(auth, async (user) => {
     `(${ROLE_LABEL[roleOf(state.member)]})`;
   $$(".admin-only").forEach((el) => { el.hidden = !isAdmin(); });
 
+  applyScopeLabels();
   showView("app");
   subscribeData();
   setTab(state.tab);
@@ -380,22 +395,57 @@ onAuthStateChanged(auth, async (user) => {
 
 /* ---------------- 資料訂閱 ---------------- */
 
-function subscribeData() {
-  state.unsubscribe.push(
-    onSnapshot(query(collection(db, "plans"), orderBy("updatedAt", "desc")), (snap) => {
-      state.plans = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      fillOwnerFilter();
-      renderDashboard();
-      renderMine();
-    }, (e) => console.error("讀取計畫失敗", e))
-  );
+/**
+ * 依角色決定看得到哪些計畫。
+ * 這裡下的 where 條件必須和安全規則一致,否則 Firestore 會直接拒絕整個查詢。
+ * 主任要看「同處室」加上「自己的」,所以是兩個查詢再合併。
+ * 一律不帶 orderBy,改由前端排序,可以省掉建立複合索引的麻煩。
+ */
+function planQueries() {
+  const ref = collection(db, "plans");
+  const role = roleOf(state.member);
+  if (role === "admin") return [query(ref)];
+  if (role === "director") {
+    return [
+      query(ref, where("dept", "==", state.member.dept || "")),
+      query(ref, where("ownerUid", "==", state.user.uid))
+    ];
+  }
+  return [query(ref, where("ownerUid", "==", state.user.uid))];
+}
 
-  state.unsubscribe.push(
-    onSnapshot(collection(db, "allowlist"), (snap) => {
-      state.members = snap.docs.map((d) => ({ email: d.id, ...d.data() }));
-      renderMembers();
-    }, (e) => console.error("讀取成員失敗", e))
-  );
+function subscribeData() {
+  const queries = planQueries();
+  const buckets = queries.map(() => []);
+
+  const merge = () => {
+    // 多個查詢可能撈到同一筆,用 id 去重後依最後更新時間排序
+    const byId = new Map();
+    buckets.flat().forEach((p) => byId.set(p.id, p));
+    state.plans = [...byId.values()].sort(
+      (a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0)
+    );
+    fillOwnerFilter();
+    renderDashboard();
+    renderMine();
+  };
+
+  queries.forEach((q, i) => {
+    state.unsubscribe.push(onSnapshot(q, (snap) => {
+      buckets[i] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      merge();
+    }, (e) => console.error("讀取計畫失敗", e)));
+  });
+
+  // 成員名單只有管理員的畫面用得到
+  if (isAdmin()) {
+    state.unsubscribe.push(
+      onSnapshot(collection(db, "allowlist"), (snap) => {
+        state.members = snap.docs.map((d) => ({ email: d.id, ...d.data() }));
+        renderMembers();
+      }, (e) => console.error("讀取成員失敗", e))
+    );
+  }
 }
 
 /* ---------------- 分頁切換 ---------------- */
@@ -1219,6 +1269,11 @@ function openMemberDialog(m) {
   mf("title").value = m?.title || "";
   mf("role").value = roleOf(m);
   $("#role-hint").textContent = ROLES.find((r) => r.id === roleOf(m))?.desc || "";
+
+  // 不讓管理員把自己降級,否則可能整個系統沒人管得動
+  const self = !!m && m.email === (state.user.email || "").toLowerCase();
+  mf("role").disabled = self;
+  show($("#self-role-note"), self);
   dlgMember.showModal();
 }
 
@@ -1253,11 +1308,14 @@ formMember.addEventListener("submit", async (e) => {
   show(err, false);
 
   const email = (editingEmail || mf("email").value).trim().toLowerCase();
+  const self = email === (state.user.email || "").toLowerCase();
+  const picked = ROLES.some((r) => r.id === mf("role").value) ? mf("role").value : DEFAULT_ROLE;
   const data = {
     name: mf("name").value.trim(),
     dept: mf("dept").value,
     title: mf("title").value.trim(),
-    role: ROLES.some((r) => r.id === mf("role").value) ? mf("role").value : DEFAULT_ROLE
+    // 編輯自己時角色一律維持原樣,前端停用之外再擋一次
+    role: self ? roleOf(state.member) : picked
   };
 
   if (!email || !data.name || !data.dept) {
@@ -1270,7 +1328,9 @@ formMember.addEventListener("submit", async (e) => {
     await setDoc(doc(db, "allowlist", email), data, { merge: true });
     dlgMember.close();
   } catch (e2) {
-    err.textContent = `儲存失敗:${e2.message}`;
+    err.textContent = e2.code === "permission-denied"
+      ? "儲存失敗:資料庫拒絕寫入。多半是 Firestore 的安全規則還是舊版本(舊版只認 teacher/admin 兩種角色),請把專案裡的 firestore.rules 重新貼到 Firebase 主控台並發布。"
+      : `儲存失敗:${e2.message}`;
     show(err, true);
   }
 });

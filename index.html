@@ -62,8 +62,8 @@
     <!-- 總覽 -->
     <section id="panel-dashboard" class="panel">
       <div class="panel-head">
-        <h2>全校行政工作總覽</h2>
-        <p class="muted">所有同仁的行政計畫進度都在這裡,逾期與久未更新的工作會被標示出來。</p>
+        <h2 id="dashboard-title">行政工作總覽</h2>
+        <p class="muted" id="dashboard-desc">載入中…</p>
       </div>
 
       <div class="stat-row" id="stat-row"></div>
@@ -254,8 +254,9 @@
       <select name="role" id="member-role"></select>
       <small class="hint" id="role-hint"></small>
     </label>
-    <p class="muted small">
-      三種角色都看得到全校的計畫進度,差別只在能編輯的範圍。
+    <p class="status-line status-info" id="self-role-note" hidden>
+      這是你自己的帳號,<strong>不能修改自己的角色</strong>,以免不小心把自己降級後失去管理權限。
+      需要調整請由另一位管理員操作。
     </p>
     <p id="member-error" class="status-line status-critical" hidden></p>
     <div class="dlg-actions">

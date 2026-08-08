@@ -48,8 +48,8 @@ service cloud.firestore {
 
     // ---------- 成員名單 ----------
     match /allowlist/{email} {
-      // 名單內的人都能讀(畫面要顯示姓名、處室)
-      allow read: if isMember();
+      // 自己的那筆一定要讀得到(登入時要判斷角色);整份名單只有管理員需要
+      allow read: if isMember() && (isAdmin() || email == emailKey());
 
       // 只有管理者能異動名單
       allow create, update: if isAdmin()
@@ -81,8 +81,12 @@ service cloud.firestore {
                   && (d.driveUrl == '' || d.driveUrl.matches('https?://.*'))));
       }
 
-      // 全校成員都看得到彼此的進度
-      allow read: if isMember();
+      // 可見範圍分層:組長只看自己的、主任看同處室、管理員看全部。
+      // 前端的查詢條件必須和這裡一致,否則 Firestore 會拒絕整個查詢。
+      allow read: if isMember()
+        && (isAdmin()
+            || resource.data.ownerUid == request.auth.uid
+            || isDirectorOf(resource.data.dept));
 
       // 只能以自己的身分建立計畫
       allow create: if isMember()

@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記,改版時要和 config.js 的 APP_VERSION、sw.js 的 VERSION 一起更新,
      否則瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=2026.08.08.3">
+<link rel="stylesheet" href="assets/style.css?v=2026.08.08.4">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -59,6 +59,7 @@
       </div>
       <nav class="tabs" role="tablist">
         <button class="tab" role="tab" data-tab="dashboard">總覽</button>
+        <button class="tab" role="tab" data-tab="calendar">行事曆</button>
         <button class="tab" role="tab" data-tab="mine">我的工作</button>
         <button class="tab admin-only" role="tab" data-tab="members" hidden>成員管理</button>
       </nav>
@@ -123,6 +124,26 @@
       </details>
 
       <div id="dashboard-list" class="plan-list"></div>
+    </section>
+
+    <!-- 行事曆 -->
+    <section id="panel-calendar" class="panel" hidden>
+      <div class="panel-head">
+        <h2>行事曆</h2>
+        <p class="muted">用月曆看哪個月要開始、結束、送結算,一眼掌握該月的行政節奏。</p>
+      </div>
+
+      <div class="cal-bar">
+        <button id="cal-prev" class="btn btn-sm" aria-label="上一個月">‹</button>
+        <strong id="cal-title" class="cal-title"></strong>
+        <button id="cal-next" class="btn btn-sm" aria-label="下一個月">›</button>
+        <button id="cal-today" class="btn btn-sm btn-ghost">回到本月</button>
+        <span class="cal-summary" id="cal-summary"></span>
+      </div>
+
+      <div class="cal-legend" id="cal-legend"></div>
+      <div class="cal-grid" id="cal-grid" role="grid" aria-label="月曆"></div>
+      <div id="cal-detail" class="cal-detail"></div>
     </section>
 
     <!-- 我的工作 -->
@@ -286,6 +307,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=2026.08.08.3"></script>
+<script type="module" src="assets/app.js?v=2026.08.08.4"></script>
 </body>
 </html>

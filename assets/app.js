@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE
   // ?v= 一樣要跟著改版更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=2026.08.08.3";
+} from "./config.js?v=2026.08.08.4";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -225,6 +225,46 @@ function groupBundles(rows) {
   return out;
 }
 
+// 行事曆上的三種日期。用調色盤前三個色階,彼此在色盲模擬下也分得開;
+// 每個標籤都帶文字,不是只靠顏色辨識。
+const EVENT_TYPES = {
+  start:  { label: "開始",   icon: "▶", color: "#2a78d6" },
+  end:    { label: "結束",   icon: "■", color: "#eb6834" },
+  settle: { label: "送結算", icon: "✓", color: "#1baf7a" }
+};
+
+/** 一個計畫在行事曆上會出現的日期 */
+function eventsOf(plan) {
+  const done = statusOf(plan) === "done";
+  const rows = [
+    { type: "start", date: plan.startDate || "" },
+    { type: "end", date: deadlineOf(plan) },
+    { type: "settle", date: settlementDueOf(plan) }
+  ];
+  return rows.filter((r) => r.date).map((r) => ({ ...r, plan, done }));
+}
+
+/** 把一個月的日期排成月曆用的格子(從週日開始,整週為單位) */
+function monthCells(y, m, today = todayStr()) {
+  const first = new Date(y, m, 1);
+  const start = new Date(y, m, 1 - first.getDay());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    cells.push({
+      ymd: todayStr(d),
+      day: d.getDate(),
+      inMonth: d.getMonth() === m,
+      isToday: todayStr(d) === today,
+      dow: d.getDay()
+    });
+  }
+  // 尾端整週都不屬於本月的就砍掉,月曆不會多出空白列
+  let n = cells.length;
+  while (n > 7 && !cells.slice(n - 7, n).some((c) => c.inMonth)) n -= 7;
+  return cells.slice(0, n);
+}
+
 /** 下一個要處理的步驟:第一個還沒完成、也不是「本次不適用」的 */
 function nextStep(plan) {
   return activeSteps(plan).find((s) => s.status !== "done") || null;
@@ -322,6 +362,7 @@ const state = {
   members: [],
   tab: "dashboard",
   expanded: new Set(),          // 展開步驟的計畫 id
+  cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
   filters: {
     year: String(currentAcademicYear()),
     dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false
@@ -476,6 +517,7 @@ function subscribeData() {
     fillOwnerFilter();
     renderDashboard();
     renderMine();
+    if (state.tab === "calendar") renderCalendar();
   };
 
   queries.forEach((q, i) => {
@@ -501,7 +543,8 @@ function subscribeData() {
 function setTab(tab) {
   state.tab = tab;
   $$(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
-  for (const p of ["dashboard", "mine", "members"]) show($(`#panel-${p}`), p === tab);
+  for (const p of ["dashboard", "calendar", "mine", "members"]) show($(`#panel-${p}`), p === tab);
+  if (tab === "calendar") renderCalendar();
 }
 $$(".tab").forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
 
@@ -971,6 +1014,123 @@ function renderMine() {
     ? mine.map((p) => planCard(p, { editable: true })).join("")
     : `<div class="empty">你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。</div>`;
 }
+
+/* ---------------- 行事曆 ---------------- */
+
+const DOW = ["日", "一", "二", "三", "四", "五", "六"];
+
+function renderCalendar() {
+  const { y, m } = state.cal;
+  const today = todayStr();
+
+  // 把看得到的計畫的所有日期,依日期歸位
+  const byDate = new Map();
+  state.plans.forEach((p) => eventsOf(p).forEach((ev) => {
+    if (!byDate.has(ev.date)) byDate.set(ev.date, []);
+    byDate.get(ev.date).push(ev);
+  }));
+
+  $("#cal-title").textContent = `${y} 年 ${m + 1} 月`;
+  $("#cal-legend").innerHTML = Object.entries(EVENT_TYPES).map(([k, t]) =>
+    `<span class="cal-key"><span class="cal-dot" style="background:${t.color}"></span>${esc(t.label)}</span>`).join("");
+
+  const cells = monthCells(y, m, today);
+
+  // 本月摘要
+  const inMonth = cells.filter((c) => c.inMonth).flatMap((c) => byDate.get(c.ymd) || []);
+  const count = (t) => inMonth.filter((e) => e.type === t).length;
+  $("#cal-summary").textContent = inMonth.length
+    ? `本月 ${count("start")} 件開始、${count("end")} 件結束、${count("settle")} 件要送結算`
+    : "本月沒有任何日期";
+
+  $("#cal-grid").innerHTML =
+    DOW.map((d, i) => `<div class="cal-dow${i === 0 || i === 6 ? " weekend" : ""}">${d}</div>`).join("") +
+    cells.map((c) => {
+      const evs = byDate.get(c.ymd) || [];
+      const cls = [
+        "cal-cell",
+        c.inMonth ? "" : "outside",
+        c.isToday ? "today" : "",
+        c.dow === 0 || c.dow === 6 ? "weekend" : "",
+        state.cal.picked === c.ymd ? "picked" : "",
+        evs.length ? "has-events" : ""
+      ].filter(Boolean).join(" ");
+
+      const chips = evs.slice(0, 3).map((ev) => {
+        const t = EVENT_TYPES[ev.type];
+        return `<span class="cal-chip${ev.done ? " is-done" : ""}" style="--chip:${t.color}"
+                      title="${esc(ev.plan.title)}・${esc(t.label)}">
+                  <span class="cal-dot" style="background:${t.color}"></span>
+                  <span class="cal-chip-text">${esc(ev.plan.title)}</span>
+                </span>`;
+      }).join("");
+
+      return `
+        <button type="button" class="${cls}" data-date="${c.ymd}"
+                aria-label="${c.ymd} 有 ${evs.length} 個項目">
+          <span class="cal-day">${c.day}</span>
+          ${chips}
+          ${evs.length > 3 ? `<span class="cal-more">還有 ${evs.length - 3} 項</span>` : ""}
+        </button>`;
+    }).join("");
+
+  renderCalDetail(byDate);
+}
+
+/** 點選某一天之後,下方列出那天的完整內容 */
+function renderCalDetail(byDate) {
+  const box = $("#cal-detail");
+  const d = state.cal.picked;
+  if (!d) {
+    box.innerHTML = `<p class="muted small">點選日期可以看當天的詳細項目。</p>`;
+    return;
+  }
+  const evs = (byDate.get(d) || []).slice().sort((a, b) => a.type.localeCompare(b.type));
+  box.innerHTML = `
+    <div class="cal-detail-head">
+      <strong>${esc(d)}</strong>
+      <button type="button" class="btn btn-sm btn-ghost" id="cal-clear">關閉</button>
+    </div>
+    ${evs.length ? `<ul class="cal-list">${evs.map((ev) => {
+      const t = EVENT_TYPES[ev.type];
+      const st = STATUS_META[statusOf(ev.plan)];
+      return `<li>
+        <span class="cal-dot" style="background:${t.color}"></span>
+        <span class="cal-list-type">${esc(t.label)}</span>
+        <span class="cal-list-title">${esc(ev.plan.title)}</span>
+        <span class="muted">${esc(ev.plan.dept)}・${esc(ev.plan.ownerName || ev.plan.ownerEmail || "")}</span>
+        <span class="badge ${st.cls}"><span aria-hidden="true">${st.icon}</span>${st.label}</span>
+      </li>`;
+    }).join("")}</ul>` : `<p class="muted small">這一天沒有項目。</p>`}`;
+}
+
+$("#cal-prev").addEventListener("click", () => {
+  const d = new Date(state.cal.y, state.cal.m - 1, 1);
+  state.cal.y = d.getFullYear(); state.cal.m = d.getMonth();
+  renderCalendar();
+});
+$("#cal-next").addEventListener("click", () => {
+  const d = new Date(state.cal.y, state.cal.m + 1, 1);
+  state.cal.y = d.getFullYear(); state.cal.m = d.getMonth();
+  renderCalendar();
+});
+$("#cal-today").addEventListener("click", () => {
+  const now = new Date();
+  // 只把月份切回來,不要順手選中今天(今天多半沒有項目,反而讓下方跳出空訊息)
+  state.cal = { y: now.getFullYear(), m: now.getMonth(), picked: "" };
+  renderCalendar();
+});
+$("#cal-grid").addEventListener("click", (e) => {
+  const cell = e.target.closest("[data-date]");
+  if (!cell) return;
+  state.cal.picked = state.cal.picked === cell.dataset.date ? "" : cell.dataset.date;
+  renderCalendar();
+});
+$("#cal-detail").addEventListener("click", (e) => {
+  if (!e.target.closest("#cal-clear")) return;
+  state.cal.picked = "";
+  renderCalendar();
+});
 
 function renderMembers() {
   const tbody = $("#members-table tbody");

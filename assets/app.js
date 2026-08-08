@@ -15,7 +15,8 @@ import {
   UNIT_GROUPS, ALL_UNITS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE
-} from "./config.js";
+  // ?v= 一樣要跟著改版更新,否則瀏覽器會沿用快取裡的舊設定檔
+} from "./config.js?v=2026.08.08.3";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -570,6 +571,14 @@ function initSelects() {
 initSelects();
 $("#app-version").textContent = `v${APP_VERSION}`;
 
+// 註冊 service worker,讓系統可以「加到主畫面」、沒網路時也開得起來。
+// 失敗不影響使用(例如用 file:// 開啟時),所以直接忽略錯誤。
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+
 // 選角色時把說明帶出來
 $("#member-role").addEventListener("change", (e) => {
   $("#role-hint").textContent = ROLES.find((r) => r.id === e.target.value)?.desc || "";
@@ -610,6 +619,23 @@ $("#f-reset").addEventListener("click", () => {
   for (const [key, sel] of Object.entries(FILTER_FIELDS)) $(sel).value = state.filters[key];
   renderDashboard();
 });
+
+/** 桌機一律展開篩選,手機收起來省空間;收起時在標題顯示還有幾個條件生效 */
+function syncFilterBox() {
+  const box = $("#filter-box");
+  const wide = window.innerWidth > 720;
+  if (wide) box.open = true;
+  else if (!box.dataset.touched) box.open = false;
+
+  const active = Object.entries(state.filters)
+    .filter(([k, v]) => v && !(k === "year" && v === String(currentAcademicYear()))).length;
+  $("#filter-count").textContent = active ? `已套用 ${active} 項` : "";
+}
+$("#filter-box").addEventListener("toggle", (e) => {
+  // 使用者自己開合過就不要再自動幫他收起來
+  if (window.innerWidth <= 720) e.target.dataset.touched = "1";
+});
+window.addEventListener("resize", syncFilterBox);
 
 function applyFilters(plans) {
   const { year, dept, owner, stage, unit, status, q, stuck } = state.filters;
@@ -932,6 +958,7 @@ function planCard(plan, { editable }) {
 
 function renderDashboard() {
   const plans = applyFilters(state.plans);
+  syncFilterBox();
   renderStats(plans);
   $("#dashboard-list").innerHTML = plans.length
     ? plans.map((p) => planCard(p, { editable: canEdit(p) })).join("")

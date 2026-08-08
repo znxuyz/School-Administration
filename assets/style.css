@@ -111,9 +111,12 @@ h4 { font-size: .95rem; }
   background: var(--surface-1);
   border-bottom: 1px solid var(--hairline);
   position: sticky; top: 0; z-index: 20;
+  /* 加到主畫面後沒有瀏覽器列,要自己避開瀏海與圓角 */
+  padding-top: env(safe-area-inset-top);
 }
 .topbar-inner {
-  max-width: 1180px; margin: 0 auto; padding: 10px 20px;
+  max-width: 1180px; margin: 0 auto;
+  padding: 10px max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left));
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
@@ -196,6 +199,23 @@ textarea { resize: vertical; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 
 /* ---------- 篩選列 ---------- */
+/* 桌機一律展開,手機預設收起來,由 JS 控制 open 屬性 */
+.filter-box > summary {
+  display: none;
+  cursor: pointer; list-style: none;
+  padding: 10px 14px; margin-bottom: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: .9rem; font-weight: 600;
+}
+.filter-box > summary::-webkit-details-marker { display: none; }
+.filter-box > summary::after { content: "▾"; float: right; color: var(--text-secondary); }
+.filter-box[open] > summary::after { content: "▴"; }
+.filter-count {
+  margin-left: 8px; font-weight: 400; font-size: .82rem;
+  color: var(--text-secondary);
+}
+
 .filters {
   display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;
   background: var(--surface-1);
@@ -541,6 +561,20 @@ textarea { resize: vertical; }
   .step-row { flex-wrap: wrap; }
   .step-controls { width: 100%; padding-left: 1.2em; }
   .step-controls select { flex: 1; min-width: 0; }
+  /* 加到主畫面後的左右圓角與底部 Home 指示條 */
+  .wrap {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: calc(48px + env(safe-area-inset-bottom));
+  }
+  .topbar-inner { padding-top: 8px; padding-bottom: 8px; }
+  .user-box { gap: 8px; }
+  .stat { padding: 11px 13px; }
+  .stat-value { font-size: 1.6rem; }
+  .stat-row { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
+  .filter-box > summary { display: block; }
+  .filters { flex-direction: column; align-items: stretch; }
+  .filters .field { min-width: 0; }
   .topbar-inner { gap: 10px; }
   .tabs { order: 3; width: 100%; }
   .wrap { padding: 18px 14px 48px; }

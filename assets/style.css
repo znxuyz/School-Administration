@@ -315,6 +315,30 @@ textarea { resize: vertical; }
 .drive-chip:hover { border-color: var(--accent); color: var(--accent); }
 .drive-chip .ext { font-size: .75rem; opacity: .7; }
 
+/* 定期計畫該辦下一次的提示 */
+.recur-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--warning-track);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 11px 14px; margin-bottom: 14px; font-size: .9rem;
+}
+.recur-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 12px; padding: 8px 12px;
+  background: var(--warning-track); border-radius: 8px;
+}
+.recur-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-weight: 600; white-space: nowrap;
+}
+
+.trash-toggle {
+  display: flex; align-items: center; gap: 5px;
+  font-size: .85rem; color: var(--text-secondary);
+  white-space: nowrap; cursor: pointer; margin-bottom: 1px;
+}
+.trash-toggle input { width: auto; margin: 0; accent-color: var(--accent); }
+
 .next-chip {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--accent); color: #fff;

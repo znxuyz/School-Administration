@@ -76,6 +76,9 @@ service cloud.firestore {
           && (!d.keys().hasAny(['handovers']) || (d.handovers is list && d.handovers.size() <= 50))
           && (!d.keys().hasAny(['location']) || d.location is string)
           && (!d.keys().hasAny(['budget']) || d.budget is number)
+          && (!d.keys().hasAny(['recurring']) || d.recurring in ['', 'half', 'year'])
+          // 刪除是可還原的:deletedAt 有值代表在垃圾桶裡
+          && (!d.keys().hasAny(['deletedAt']) || d.deletedAt is string)
           // 掃描檔連結只收 http/https,前端也會再擋一次
           && (!d.keys().hasAny(['driveUrl'])
               || (d.driveUrl is string && d.driveUrl.size() <= 500

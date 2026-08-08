@@ -14,9 +14,9 @@ import {
   APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
   UNIT_GROUPS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
-  ROLES, DEFAULT_ROLE
+  ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 一樣要跟著改版更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=2026.08.08.6";
+} from "./config.js?v=2026.08.08.7";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -90,6 +90,9 @@ const STEP_STATUSES = Object.keys(STEP_LABEL);
 
 /** 本次要做的步驟(排除標記為不適用的) */
 const activeSteps = (plan) => (plan.steps || []).filter((s) => s.status !== "na");
+
+/** 沒被丟進垃圾桶的計畫。刪除是可還原的,平常的畫面一律不顯示已刪除的 */
+const livePlans = () => state.plans.filter((p) => !p.deletedAt);
 const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.id, s.label]));
 
 const STATUS_META = {
@@ -109,6 +112,39 @@ function addDays(ymd, n) {
   if (isNaN(d)) return "";
   d.setDate(d.getDate() + n);
   return todayStr(d);
+}
+
+/** YYYY-MM-DD 加上 n 個月(月底日期會自動收斂,例如 1/31 加一個月是 2/28) */
+function addMonths(ymd, n) {
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const dt = new Date(y, m - 1 + n, 1);
+  const lastDay = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+  dt.setDate(Math.min(d, lastDay));
+  return todayStr(dt);
+}
+
+const RECUR_MONTHS = Object.fromEntries(RECURRENCES.map((r) => [r.id, r.months]));
+const RECUR_LABEL = Object.fromEntries(RECURRENCES.map((r) => [r.id, r.label]));
+
+/** 這個重複性計畫下一次該辦的日期(以這次的執行結束日往後推一個週期) */
+function nextRoundDate(plan) {
+  const months = RECUR_MONTHS[plan.recurring] || 0;
+  const base = deadlineOf(plan);
+  return months && base ? addMonths(base, months) : "";
+}
+
+/**
+ * 這個計畫是不是「該辦下一次了」:
+ * 設了重複週期、這一次已經結案,而且已經接近下一次的時間。
+ */
+function recurDue(plan, today = todayStr()) {
+  if (!plan.recurring || plan.deletedAt) return null;
+  if (statusOf(plan) !== "done") return null;
+  const next = nextRoundDate(plan);
+  if (!next) return null;
+  return today >= addDays(next, -RECUR_LEAD_DAYS) ? next : null;
 }
 
 /**
@@ -265,6 +301,14 @@ function monthCells(y, m, today = todayStr()) {
   return cells.slice(0, n);
 }
 
+/** 搜尋比對的範圍:計畫本身、承辦人,以及每個步驟的名稱與備註 */
+function searchText(plan) {
+  return [
+    plan.title, plan.note, plan.dept, plan.ownerName,
+    ...(plan.steps || []).flatMap((s) => [s.title, s.note])
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
 /** 下一個要處理的步驟:第一個還沒完成、也不是「本次不適用」的 */
 function nextStep(plan) {
   return activeSteps(plan).find((s) => s.status !== "done") || null;
@@ -366,7 +410,7 @@ const state = {
   cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
   filters: {
     year: String(currentAcademicYear()),
-    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false
+    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false, trash: false
   },
   unsubscribe: []
 };
@@ -601,10 +645,10 @@ function fillUnitSelect(sel, { placeholder } = {}) {
 }
 
 function fillOwnerFilter() {
-  const owners = [...new Set(state.plans.map((p) => (p.ownerEmail || "").toLowerCase()))]
+  const owners = [...new Set(livePlans().map((p) => (p.ownerEmail || "").toLowerCase()))]
     .filter(Boolean)
     .map((email) => {
-      const p = state.plans.find((x) => (x.ownerEmail || "").toLowerCase() === email);
+      const p = livePlans().find((x) => (x.ownerEmail || "").toLowerCase() === email);
       return [email, p?.ownerName || email];
     })
     .sort((a, b) => a[1].localeCompare(b[1], "zh-Hant"));
@@ -635,6 +679,7 @@ function initSelects() {
   fillSelect($('#form-plan select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
   fillSelect($('#form-plan select[name="year"]'), yearOptions().map((y) => [String(y), `${y} 學年度`]));
   fillSelect($("#plan-template"), TEMPLATES.map((t) => [t.id, t.label]));
+  fillSelect($('#form-plan select[name="recurring"]'), RECURRENCES.map((r) => [r.id, r.label]));
 
   fillSelect($('#form-member select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
   fillSelect($("#member-role"), ROLES.map((r) => [r.id, r.label]));
@@ -689,12 +734,18 @@ $("#stat-row").addEventListener("click", (e) => {
   renderDashboard();
 });
 
+$("#f-trash").addEventListener("change", (e) => {
+  state.filters.trash = e.target.checked;
+  renderDashboard();
+});
+
 $("#f-reset").addEventListener("click", () => {
   state.filters = {
     year: String(currentAcademicYear()),
-    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false
+    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false, trash: false
   };
   for (const [key, sel] of Object.entries(FILTER_FIELDS)) $(sel).value = state.filters[key];
+  $("#f-trash").checked = false;
   renderDashboard();
 });
 
@@ -716,9 +767,11 @@ $("#filter-box").addEventListener("toggle", (e) => {
 window.addEventListener("resize", syncFilterBox);
 
 function applyFilters(plans) {
-  const { year, dept, owner, stage, unit, status, q, stuck } = state.filters;
+  const { year, dept, owner, stage, unit, status, q, stuck, trash } = state.filters;
   const kw = q.trim().toLowerCase();
   return plans.filter((p) => {
+    // 垃圾桶是獨立檢視:平常不顯示已刪除的,打開時只顯示已刪除的
+    if (trash !== !!p.deletedAt) return false;
     if (stuck && !hasStuckDoc(p)) return false;
     if (year && String(p.year) !== year) return false;
     if (dept && p.dept !== dept) return false;
@@ -726,7 +779,7 @@ function applyFilters(plans) {
     if (unit && !unitsOf(p).includes(unit)) return false;
     if (stage && currentStage(p)?.id !== stage) return false;
     if (status && statusOf(p) !== status) return false;
-    if (kw && !`${p.title} ${p.note || ""}`.toLowerCase().includes(kw)) return false;
+    if (kw && !searchText(p).includes(kw)) return false;
     return true;
   });
 }
@@ -1000,6 +1053,18 @@ function planCard(plan, { editable }) {
          <span aria-hidden="true">📁</span>掃描檔<span class="ext" aria-hidden="true">↗</span></a>`
     : "";
 
+  // 重複性計畫結案後,到了下一次該辦的時間就在卡片上提示
+  const due = recurDue(plan);
+  const recurRow = due
+    ? `<div class="recur-row">
+         <span class="recur-tag"><span aria-hidden="true">🔁</span>該辦下一次了</span>
+         <span class="muted small">${esc(RECUR_LABEL[plan.recurring] || "")}・下一次建議在 ${esc(due)} 前開始</span>
+         ${editable ? `
+           <button class="btn btn-sm btn-primary" data-act="copy" data-id="${esc(plan.id)}">建立下一次</button>
+           <button class="btn btn-sm btn-ghost" data-act="recur-done" data-id="${esc(plan.id)}">不再提醒</button>` : ""}
+       </div>`
+    : "";
+
   const outRow = (nextChip || out.length || legacy || driveChip)
     ? `<div class="loc-row">
          ${nextChip}
@@ -1032,14 +1097,22 @@ function planCard(plan, { editable }) {
         </div>
         <div class="plan-actions">
           <span class="badge ${meta.cls}"><span aria-hidden="true">${meta.icon}</span>${meta.label}</span>
-          <button class="btn btn-sm" data-act="copy" data-id="${esc(plan.id)}"
-                  title="以這個計畫為範本,複製一份到新學年">複製</button>
-          ${editable ? `
-            <button class="btn btn-sm" data-act="edit" data-id="${esc(plan.id)}">編輯</button>
-            <button class="btn btn-sm btn-danger" data-act="delete" data-id="${esc(plan.id)}">刪除</button>` : ""}
+          ${plan.deletedAt ? `
+            <span class="badge badge-stale"><span aria-hidden="true">🗑</span>已刪除 ${esc(plan.deletedAt)}${plan.deletedBy ? `・${esc(plan.deletedBy)}` : ""}</span>
+            ${editable ? `
+              <button class="btn btn-sm" data-act="restore" data-id="${esc(plan.id)}">還原</button>
+              <button class="btn btn-sm btn-danger" data-act="purge" data-id="${esc(plan.id)}">永久刪除</button>` : ""}
+          ` : `
+            <button class="btn btn-sm" data-act="copy" data-id="${esc(plan.id)}"
+                    title="以這個計畫為範本,複製一份到新學年">複製</button>
+            ${editable ? `
+              <button class="btn btn-sm" data-act="edit" data-id="${esc(plan.id)}">編輯</button>
+              <button class="btn btn-sm btn-danger" data-act="delete" data-id="${esc(plan.id)}">刪除</button>` : ""}
+          `}
         </div>
       </div>
 
+      ${recurRow}
       ${outRow}
       ${stageBarHtml(plan)}
       ${meterHtml(plan)}
@@ -1052,9 +1125,35 @@ function planCard(plan, { editable }) {
     </article>`;
 }
 
+/** 總覽最上方的提示:有哪些定期計畫該辦下一次了 */
+function renderRecurBanner() {
+  const box = $("#recur-banner");
+  const due = livePlans().filter((p) => recurDue(p));
+  show(box, due.length > 0);
+  if (!due.length) return;
+
+  box.innerHTML = `
+    <span class="recur-tag"><span aria-hidden="true">🔁</span>該辦下一次了</span>
+    <span>${due.length} 個定期計畫到了該再辦一次的時間:
+      ${due.slice(0, 3).map((p) => esc(p.title)).join("、")}${due.length > 3 ? ` 等 ${due.length} 件` : ""}</span>
+    <button type="button" class="btn btn-sm" id="recur-focus">只看這些</button>`;
+}
+
+$("#recur-banner").addEventListener("click", (e) => {
+  if (!e.target.closest("#recur-focus")) return;
+  // 定期計畫都已結案,切到「已完成」並清掉其他條件才看得到
+  state.filters = { ...state.filters, year: "", status: "done", q: "", stuck: false, trash: false };
+  $("#f-year").value = "";
+  $("#f-status").value = "done";
+  $("#f-q").value = "";
+  $("#f-trash").checked = false;
+  renderDashboard();
+});
+
 function renderDashboard() {
   const plans = applyFilters(state.plans);
   syncFilterBox();
+  renderRecurBanner();
   renderStats(plans);
 
   if (state.loadError) {
@@ -1068,7 +1167,7 @@ function renderDashboard() {
 }
 
 function renderMine() {
-  const mine = state.plans.filter(isMine);
+  const mine = livePlans().filter(isMine);
   $("#mine-list").innerHTML = mine.length
     ? mine.map((p) => planCard(p, { editable: true })).join("")
     : `<div class="empty">你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。</div>`;
@@ -1084,7 +1183,7 @@ function renderCalendar() {
 
   // 把看得到的計畫的所有日期,依日期歸位
   const byDate = new Map();
-  state.plans.forEach((p) => eventsOf(p).forEach((ev) => {
+  livePlans().forEach((p) => eventsOf(p).forEach((ev) => {
     if (!byDate.has(ev.date)) byDate.set(ev.date, []);
     byDate.get(ev.date).push(ev);
   }));
@@ -1193,7 +1292,7 @@ $("#cal-detail").addEventListener("click", (e) => {
 
 /** 某位成員名下的計畫 */
 const plansOwnedBy = (email) =>
-  state.plans.filter((p) => (p.ownerEmail || "").toLowerCase() === String(email).toLowerCase());
+  livePlans().filter((p) => (p.ownerEmail || "").toLowerCase() === String(email).toLowerCase());
 
 function renderMembers() {
   const tbody = $("#members-table tbody");
@@ -1327,11 +1426,39 @@ document.addEventListener("click", async (e) => {
   } else if (act === "copy") {
     openPlanDialog(plan, { copy: true });
   } else if (act === "delete") {
-    if (!confirm(`確定要刪除「${plan.title}」嗎?此動作無法復原。`)) return;
+    // 丟進垃圾桶而不是真的刪掉,誤刪救得回來
+    if (!confirm(`確定要刪除「${plan.title}」嗎?\n會移到垃圾桶,之後可以還原。`)) return;
+    try {
+      await updateDoc(doc(db, "plans", plan.id), {
+        deletedAt: todayStr(),
+        deletedBy: state.member?.name || "",
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      alert(`刪除失敗:${err.message}`);
+    }
+  } else if (act === "restore") {
+    try {
+      await updateDoc(doc(db, "plans", plan.id), {
+        deletedAt: "", deletedBy: "", updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      alert(`還原失敗:${err.message}`);
+    }
+  } else if (act === "purge") {
+    if (!confirm(`要永久刪除「${plan.title}」嗎?\n這次是真的刪掉,無法再還原。`)) return;
     try {
       await deleteDoc(doc(db, "plans", plan.id));
     } catch (err) {
-      alert(`刪除失敗:${err.message}`);
+      alert(`永久刪除失敗:${err.message}`);
+    }
+  } else if (act === "recur-done") {
+    // 已經另外建好下一次了,不用再提醒
+    if (!confirm(`「${plan.title}」不再提醒下一次了嗎?`)) return;
+    try {
+      await updateDoc(doc(db, "plans", plan.id), { recurring: "", updatedAt: serverTimestamp() });
+    } catch (err) {
+      alert(`更新失敗:${err.message}`);
     }
   }
 });
@@ -1412,6 +1539,7 @@ document.addEventListener("change", async (e) => {
 const dlgPlan = $("#dlg-plan");
 const formPlan = $("#form-plan");
 let editingPlanId = null;
+let copySourceId = null;    // 複製時記住來源,存檔後把來源的重複提醒交棒過來
 let draftSteps = [];
 let draftTouched = false;      // 使用者有沒有手動改過步驟(決定換範本要不要先確認)
 let lastTemplateId = "";
@@ -1560,6 +1688,7 @@ $('#form-plan input[name="endDate"]').addEventListener("input", updateSettlement
 function openPlanDialog(plan, { copy = false } = {}) {
   const isCopy = !!(plan && copy);
   editingPlanId = isCopy ? null : (plan?.id || null);
+  copySourceId = isCopy ? plan.id : null;
 
   $("#dlg-plan-title").textContent = isCopy ? "複製計畫到新學年" : (plan ? "編輯計畫" : "新增計畫");
   show($("#plan-error"), false);
@@ -1583,6 +1712,7 @@ function openPlanDialog(plan, { copy = false } = {}) {
   pf("startDate").value = isCopy ? "" : (plan?.startDate || "");
   pf("endDate").value = isCopy ? "" : (plan?.endDate || deadlineOf(plan || {}) || "");
   pf("budget").value = isCopy ? "" : (plan?.budget || "");
+  pf("recurring").value = plan?.recurring || "";   // 重複週期由新的一次接手
   pf("driveUrl").value = isCopy ? "" : (plan?.driveUrl || "");
   pf("note").value = plan?.note || "";      // 計畫依據之類的說明通常可以沿用
   updateSettlementHint();
@@ -1643,6 +1773,7 @@ formPlan.addEventListener("submit", async (e) => {
     startDate,
     endDate,
     budget: Number(pf("budget").value) || 0,
+    recurring: RECURRENCES.some((r) => r.id === pf("recurring").value) ? pf("recurring").value : "",
     driveUrl: safeUrl(pf("driveUrl").value),
     note: pf("note").value.trim(),
     steps,
@@ -1672,6 +1803,12 @@ formPlan.addEventListener("submit", async (e) => {
         ownerName: state.member?.name || state.user.displayName || "",
         createdAt: serverTimestamp()
       });
+
+      // 從重複性計畫複製出下一次之後,來源就不必再提醒了
+      const src = copySourceId && state.plans.find((p) => p.id === copySourceId);
+      if (src?.recurring) {
+        await updateDoc(doc(db, "plans", src.id), { recurring: "" }).catch(() => {});
+      }
     }
     // 存到別的學年度時把篩選切過去,不然剛建好的計畫會被目前的學年篩選擋住
     if (state.filters.year && state.filters.year !== String(payload.year)) {

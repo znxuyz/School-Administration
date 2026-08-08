@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記,改版時要和 config.js 的 APP_VERSION、sw.js 的 VERSION 一起更新,
      否則瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=2026.08.08.6">
+<link rel="stylesheet" href="assets/style.css?v=2026.08.08.7">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -124,9 +124,14 @@
           <span>搜尋</span>
           <input id="f-q" type="search" placeholder="計畫名稱關鍵字" autocomplete="off">
         </label>
+        <label class="trash-toggle">
+          <input type="checkbox" id="f-trash"><span>顯示垃圾桶</span>
+        </label>
         <button id="f-reset" class="btn btn-ghost btn-sm">重設</button>
       </div>
       </details>
+
+      <div id="recur-banner" class="recur-banner" hidden></div>
 
       <div id="dashboard-list" class="plan-list"></div>
     </section>
@@ -232,6 +237,11 @@
       <label class="field">
         <span>核定經費(元)</span>
         <input name="budget" type="number" min="0" step="1" placeholder="沒有經費可留空">
+      </label>
+      <label class="field">
+        <span>重複週期</span>
+        <select name="recurring"></select>
+        <small class="hint">消防申報、課程計畫這類定期要辦的,結案後系統會提醒你辦下一次。</small>
       </label>
     </div>
 
@@ -340,6 +350,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=2026.08.08.6"></script>
+<script type="module" src="assets/app.js?v=2026.08.08.7"></script>
 </body>
 </html>

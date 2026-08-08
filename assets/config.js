@@ -1,7 +1,7 @@
 // 版本號。每次改版都要往上加,並且同步修改 index.html 裡
 // assets/app.js?v= 與 assets/style.css?v= 的數字,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
-export const APP_VERSION = "2026.08.08.6";
+export const APP_VERSION = "2026.08.08.7";
 
 // Firebase 專案設定。
 // 這段設定屬於公開資訊,放在前端是 Firebase 的正常用法;
@@ -149,6 +149,17 @@ export const TEMPLATES = [
     steps: []
   }
 ];
+
+// 會定期重來的計畫(消防申報每半年、課程計畫每學年…)。
+// 結案後到了下一次該辦的時間,系統會主動提示。
+export const RECURRENCES = [
+  { id: "", label: "不重複", months: 0 },
+  { id: "half", label: "每半年(6 個月)", months: 6 },
+  { id: "year", label: "每學年(12 個月)", months: 12 }
+];
+
+// 下一次該辦的日期前幾天開始提醒。
+export const RECUR_LEAD_DAYS = 30;
 
 // 超過這個天數沒有更新,且尚未完成的計畫會被標為「待更新」。
 export const STALE_DAYS = 14;

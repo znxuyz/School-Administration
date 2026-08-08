@@ -1,7 +1,7 @@
 // 版本號。每次改版都要往上加,並且同步修改 index.html 裡
 // assets/app.js?v= 與 assets/style.css?v= 的數字,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
-export const APP_VERSION = "2026.08.08.1";
+export const APP_VERSION = "2026.08.08.2";
 
 // Firebase 專案設定。
 // 這段設定屬於公開資訊,放在前端是 Firebase 的正常用法;
@@ -153,6 +153,9 @@ export const TEMPLATES = [
 
 // 超過這個天數沒有更新,且尚未完成的計畫會被標為「待更新」。
 export const STALE_DAYS = 14;
+
+// 公文送出去之後停在同一個單位超過這麼多天,就會被標成「卡關」。
+export const STUCK_DAYS = 10;
 
 // 結算寬限期:計畫執行結束後還有幾天可以送結算。
 // 老師填的「執行結束日期」不含這段時間,系統會自動往後加。

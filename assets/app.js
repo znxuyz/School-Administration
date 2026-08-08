@@ -11,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 import {
-  APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS,
+  APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
   UNIT_GROUPS, ALL_UNITS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE
@@ -129,18 +129,54 @@ function effectiveDue(step, plan) {
  * 還在外面的文件:有指定所在單位、而且不是「承辦人手上」、也還沒完成的步驟。
  * 公文位置是掛在每一份文件(步驟)上的,不是整個計畫共用一個位置。
  */
+/**
+ * 這份文件是哪天送出去的。
+ * 新資料直接看 sentAt;舊資料沒有這個欄位,就回頭查流轉紀錄裡
+ * 最後一次送到目前這個單位的日期。
+ */
+function sentAtOf(step, plan) {
+  if (!step.location || step.location === DEFAULT_UNIT) return "";
+  if (step.sentAt) return step.sentAt;
+  const hit = [...(plan.flow || [])]
+    .filter((f) => f.to === step.location)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  return hit?.date || "";
+}
+
+/** 這份文件已經在對方那裡放了幾天;null = 不在外面或算不出來 */
+function daysAway(step, plan, today = todayStr()) {
+  if (step.status === "done" || step.status === "na") return null;
+  const at = sentAtOf(step, plan);
+  return at ? daysBetween(at, today) : null;
+}
+
+const isStuck = (step, plan, today = todayStr()) => {
+  const d = daysAway(step, plan, today);
+  return d !== null && d >= STUCK_DAYS;
+};
+
+/** 這個計畫有沒有卡關的公文 */
+function hasStuckDoc(plan, today = todayStr()) {
+  return activeSteps(plan).some((s) => isStuck(s, plan, today));
+}
+
 function documentsOut(plan) {
   const byUnit = new Map();
   activeSteps(plan)
     .filter((s) => s.location && s.location !== DEFAULT_UNIT && s.status !== "done")
     .forEach((s) => {
-      if (!byUnit.has(s.location)) byUnit.set(s.location, []);
-      byUnit.get(s.location).push(s.title);
+      const cur = byUnit.get(s.location) || { titles: [], days: null };
+      cur.titles.push(s.title);
+      const d = daysAway(s, plan);
+      if (d !== null && (cur.days === null || d > cur.days)) cur.days = d;
+      byUnit.set(s.location, cur);
     });
   // 同一個單位的多份文件收成一則,卡片才不會被一長串小標籤淹沒
-  return [...byUnit].map(([unit, titles]) => ({
+  return [...byUnit].map(([unit, v]) => ({
     unit,
-    title: titles.length === 1 ? titles[0] : `${titles[0]} 等 ${titles.length} 份`
+    title: v.titles.length === 1 ? v.titles[0] : `${v.titles[0]} 等 ${v.titles.length} 份`,
+    days: v.days,
+    stuck: v.days !== null && v.days >= STUCK_DAYS
   }));
 }
 
@@ -287,7 +323,7 @@ const state = {
   expanded: new Set(),          // 展開步驟的計畫 id
   filters: {
     year: String(currentAcademicYear()),
-    dept: "", owner: "", stage: "", unit: "", status: "", q: ""
+    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false
   },
   unsubscribe: []
 };
@@ -556,24 +592,30 @@ $("#stat-row").addEventListener("click", (e) => {
   const tile = e.target.closest("[data-stat]");
   if (!tile) return;
   const key = tile.dataset.stat;
-  state.filters.status = state.filters.status === key ? "" : key;
-  $("#f-status").value = state.filters.status;
+  if (key === "stuck") {
+    // 卡關是獨立的篩選條件,不屬於計畫狀態
+    state.filters.stuck = !state.filters.stuck;
+  } else {
+    state.filters.status = state.filters.status === key ? "" : key;
+    $("#f-status").value = state.filters.status;
+  }
   renderDashboard();
 });
 
 $("#f-reset").addEventListener("click", () => {
   state.filters = {
     year: String(currentAcademicYear()),
-    dept: "", owner: "", stage: "", unit: "", status: "", q: ""
+    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false
   };
   for (const [key, sel] of Object.entries(FILTER_FIELDS)) $(sel).value = state.filters[key];
   renderDashboard();
 });
 
 function applyFilters(plans) {
-  const { year, dept, owner, stage, unit, status, q } = state.filters;
+  const { year, dept, owner, stage, unit, status, q, stuck } = state.filters;
   const kw = q.trim().toLowerCase();
   return plans.filter((p) => {
+    if (stuck && !hasStuckDoc(p)) return false;
     if (year && String(p.year) !== year) return false;
     if (dept && p.dept !== dept) return false;
     if (owner && p.ownerUid !== owner) return false;
@@ -591,18 +633,21 @@ function renderStats(plans) {
   const counts = { total: plans.length, active: 0, overdue: 0, stale: 0, done: 0 };
   plans.forEach((p) => { counts[statusOf(p)]++; });
 
+  const stuck = plans.filter((p) => hasStuckDoc(p)).length;
+
   const tiles = [
     { key: "", label: "計畫總數", value: counts.total, color: "var(--text-muted)" },
     { key: "active", label: "進行中", value: counts.active, color: STATUS_META.active.color },
     { key: "overdue", label: "逾期", value: counts.overdue, color: STATUS_META.overdue.color },
     { key: "stale", label: "待更新", value: counts.stale, color: STATUS_META.stale.color },
-    { key: "done", label: "已完成", value: counts.done, color: STATUS_META.done.color }
+    { key: "done", label: "已完成", value: counts.done, color: STATUS_META.done.color },
+    { key: "stuck", label: "公文卡關", value: stuck, color: "var(--status-serious)", separate: true }
   ];
 
   // 統計磚同時是篩選捷徑:點「逾期」就只看逾期的計畫
   $("#stat-row").innerHTML = tiles.map((t) => `
     <button type="button" class="stat" data-stat="${esc(t.key)}"
-            aria-pressed="${state.filters.status === t.key}">
+            aria-pressed="${t.separate ? state.filters.stuck : state.filters.status === t.key}">
       <span class="stat-label">
         <span class="dot" style="background:${t.color}"></span>${esc(t.label)}
       </span>
@@ -702,6 +747,14 @@ function stepRowHtml(plan, s, editable, inBundle) {
        </div>`;
 
   const away = !inBundle && !na && s.location && s.location !== DEFAULT_UNIT && s.status !== "done";
+  const gone = daysAway(s, plan);
+  const stuck = isStuck(s, plan);
+  const awayTag = away
+    ? `<span class="away-tag${stuck ? " stuck" : ""}">
+         <span aria-hidden="true">${stuck ? "⚠" : "📄"}</span>已送至 ${esc(s.location)}${
+           gone === null ? "" : `・${gone} 天${stuck ? "(卡關)" : ""}`}
+       </span>`
+    : "";
 
   return `
     <div class="step-row" data-status="${esc(s.status)}">
@@ -709,7 +762,7 @@ function stepRowHtml(plan, s, editable, inBundle) {
       <div class="step-main">
         <div class="step-title">
           ${esc(s.title)}
-          ${away ? `<span class="away-tag"><span aria-hidden="true">📄</span>已送至 ${esc(s.location)}</span>` : ""}
+          ${awayTag}
         </div>
         ${sub ? `<div class="step-sub">${sub}</div>` : ""}
       </div>
@@ -739,13 +792,28 @@ function stepsHtml(plan, editable) {
       const idxs = live.map((s) => s._i).join(",");
       const naCount = bundle.length - live.length;
 
+      // 整批送出去幾天了(取這批裡最久的一份)
+      const bundleDays = live.reduce((max, s) => {
+        const d = daysAway(s, plan);
+        return d !== null && (max === null || d > max) ? d : max;
+      }, null);
+      const bundleStuck = bundleDays !== null && bundleDays >= STUCK_DAYS;
+      const daysTag = loc !== DEFAULT_UNIT && bundleDays !== null
+        ? `<span class="away-tag${bundleStuck ? " stuck" : ""}">
+             <span aria-hidden="true">${bundleStuck ? "⚠" : "📄"}</span>已送出 ${bundleDays} 天${bundleStuck ? "(卡關)" : ""}
+           </span>`
+        : "";
+
       const foot = editable && live.length
         ? `<div class="bundle-foot">
              <span class="muted small">這批文件目前在</span>
              <select class="bundle-loc" data-plan="${esc(plan.id)}" data-steps="${idxs}"
                      aria-label="這批文件目前在哪">${unitOptions(loc)}</select>
+             ${daysTag}
            </div>`
-        : (live.length ? `<div class="bundle-foot"><span class="muted small">這批文件目前在 ${esc(loc)}</span></div>` : "");
+        : (live.length
+            ? `<div class="bundle-foot"><span class="muted small">這批文件目前在 ${esc(loc)}</span>${daysTag}</div>`
+            : "");
 
       return `
         <div class="bundle">
@@ -814,7 +882,11 @@ function planCard(plan, { editable }) {
     ? `<div class="loc-row">
          ${nextChip}
          ${driveChip}
-         ${out.map((d) => `<span class="loc-chip"><span aria-hidden="true">📄</span>${esc(d.title)} <span aria-hidden="true">→</span> <b>${esc(d.unit)}</b></span>`).join("")}
+         ${out.map((d) => `<span class="loc-chip${d.stuck ? " stuck" : ""}">
+             <span aria-hidden="true">${d.stuck ? "⚠" : "📄"}</span>${esc(d.title)}
+             <span aria-hidden="true">→</span> <b>${esc(d.unit)}</b>${
+               d.days === null ? "" : `<span class="loc-days">${d.days} 天${d.stuck ? "・卡關" : ""}</span>`}
+           </span>`).join("")}
          ${legacy}
        </div>`
     : "";
@@ -941,7 +1013,15 @@ document.addEventListener("change", async (e) => {
 
   const steps = all.map((s, i) => {
     if (!targets.includes(i)) return s;
-    if (isLoc) return { ...s, location: sel.value };
+    if (isLoc) {
+      // 送到新的單位才重算「送出去幾天」;沒換單位就沿用原本的日期
+      const same = (s.location || "") === sel.value;
+      return {
+        ...s,
+        location: sel.value,
+        sentAt: same ? (s.sentAt || "") : (sel.value ? todayStr() : "")
+      };
+    }
     const v = sel.value;
     return {
       ...s,
@@ -1015,6 +1095,8 @@ function renderStepEditor() {
         <input type="checkbox" data-k="bundleWithPrev"${s.bundleWithPrev ? " checked" : ""}${i === 0 ? " disabled" : ""}>
         <span>同批</span>
       </label>
+      <input class="step-note-input" value="${esc(s.note || "")}" data-k="note"
+             placeholder="備註(選填),例:缺兩張發票" maxlength="100" aria-label="步驟備註">
       <div class="row-tools">
         <button type="button" class="icon-btn" data-move="up" data-i="${i}"
                 title="上移" aria-label="上移這個步驟"${i === 0 ? " disabled" : ""}>↑</button>
@@ -1201,6 +1283,7 @@ formPlan.addEventListener("submit", async (e) => {
         due: s.due || "",
         // 以下都是在卡片上維護的,編輯計畫時要原封帶回去,不能被洗掉
         location: s.location || "",
+        sentAt: s.sentAt || "",
         doneAt: s.doneAt || "",
         startedAt: status === "doing" ? (s.startedAt || todayStr()) : (s.startedAt || "")
       };

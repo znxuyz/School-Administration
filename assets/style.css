@@ -310,6 +310,21 @@ textarea { resize: vertical; }
   background: var(--accent-wash); color: var(--text-secondary);
   font-size: .76rem; white-space: nowrap;
 }
+/* 公文停在同一單位太久 */
+.away-tag.stuck {
+  background: var(--critical-track); color: var(--text-primary); font-weight: 600;
+}
+.loc-chip.stuck {
+  background: var(--critical-track);
+  border-color: var(--status-critical);
+  color: var(--text-primary);
+}
+.loc-days {
+  color: var(--text-muted); font-variant-numeric: tabular-nums;
+  margin-left: 6px; padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+.loc-chip.stuck .loc-days { color: var(--text-primary); font-weight: 600; }
 .step-controls { display: flex; gap: 6px; flex: none; }
 .step-loc { width: auto; min-width: 148px; font-size: .85rem; padding: 4px 8px; }
 
@@ -465,10 +480,23 @@ textarea { resize: vertical; }
 }
 .steps-head h4 { margin: 0; }
 .steps-editor { display: flex; flex-direction: column; gap: 8px; }
+/* 每個步驟兩列:上排是主要欄位,下排放備註,右側工具鈕跨兩列 */
 .step-edit {
   display: grid; gap: 6px; align-items: center;
   grid-template-columns: 88px minmax(160px, 1fr) 112px auto auto;
+  grid-template-areas:
+    "stage title status same tools"
+    "note  note  note   note tools";
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
 }
+.step-edit > select[data-k="stage"] { grid-area: stage; }
+.step-edit > input[data-k="title"] { grid-area: title; }
+.step-edit > select[data-k="status"] { grid-area: status; }
+.step-edit > .same-doc { grid-area: same; }
+.step-edit > .step-note-input { grid-area: note; }
+.step-edit > .row-tools { grid-area: tools; }
+.step-note-input { font-size: .85rem; padding: 5px 9px; }
 
 /* 「與上一個步驟一起送公文」 */
 .same-doc {
@@ -502,7 +530,14 @@ textarea { resize: vertical; }
 
 @media (max-width: 720px) {
   .grid-2 { grid-template-columns: 1fr; }
-  .step-edit { grid-template-columns: 1fr; }
+  /* 手機上把步驟拆成三列,名稱才有足夠寬度 */
+  .step-edit {
+    grid-template-columns: 88px 1fr auto;
+    grid-template-areas:
+      "stage  title title"
+      "status same  tools"
+      "note   note  note";
+  }
   .step-row { flex-wrap: wrap; }
   .step-controls { width: 100%; padding-left: 1.2em; }
   .step-controls select { flex: 1; min-width: 0; }

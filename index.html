@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記,改版時要和 config.js 的 APP_VERSION 一起更新,
      否則瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=2026.08.08.1">
+<link rel="stylesheet" href="assets/style.css?v=2026.08.08.2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
 </head>
 <body>
@@ -218,6 +218,7 @@
       <strong>步驟不用各自填日期</strong> —— 期限一律看上面的執行起訖日與結算期限,
       步驟改成「進行中」之後就會自動幫你算已經進行幾天。
       公文送到哪裡也不用在這裡設定,建好之後在卡片上直接更新該份文件的位置就好。
+      備註欄可以記「缺兩張發票」之類的提醒,會顯示在卡片的步驟下方。
     </p>
     <div id="steps-editor" class="steps-editor"></div>
 
@@ -272,6 +273,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=2026.08.08.1"></script>
+<script type="module" src="assets/app.js?v=2026.08.08.2"></script>
 </body>
 </html>

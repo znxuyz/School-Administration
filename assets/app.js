@@ -11,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 import {
-  firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS,
+  APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS,
   UNIT_GROUPS, ALL_UNITS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE
@@ -302,6 +302,20 @@ const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.id, r.label]));
 const isAdmin = () => roleOf(state.member) === "admin";
 
 /**
+ * 誰看得到這個計畫:組長只有自己的、主任加上同處室、管理員全部。
+ * 資料層已經用查詢條件和安全規則擋過一次,這裡是第二道防線 ——
+ * 萬一查詢或快取出問題,畫面也不會把別人的計畫顯示出來。
+ */
+function canSee(plan) {
+  if (!state.user || !state.member) return false;
+  const role = roleOf(state.member);
+  if (role === "admin") return true;
+  if (plan.ownerUid === state.user.uid) return true;
+  if (role === "director") return plan.dept === state.member.dept;
+  return false;
+}
+
+/**
  * 誰能編輯這個計畫:只有承辦人自己和管理員。
  * 主任看得到同處室的計畫,但不能代為修改 —— 責任歸屬留給承辦人。
  */
@@ -419,9 +433,9 @@ function subscribeData() {
     // 多個查詢可能撈到同一筆,用 id 去重後依最後更新時間排序
     const byId = new Map();
     buckets.flat().forEach((p) => byId.set(p.id, p));
-    state.plans = [...byId.values()].sort(
-      (a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0)
-    );
+    state.plans = [...byId.values()]
+      .filter(canSee)              // 第二道防線,見 canSee 的說明
+      .sort((a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0));
     fillOwnerFilter();
     renderDashboard();
     renderMine();
@@ -518,6 +532,7 @@ function initSelects() {
   fillSelect($("#member-role"), ROLES.map((r) => [r.id, r.label]));
 }
 initSelects();
+$("#app-version").textContent = `v${APP_VERSION}`;
 
 // 選角色時把說明帶出來
 $("#member-role").addEventListener("change", (e) => {

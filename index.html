@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>行政工作進度追蹤系統</title>
-<link rel="stylesheet" href="assets/style.css">
+<!-- ?v= 是版本標記,改版時要和 config.js 的 APP_VERSION 一起更新,
+     否則瀏覽器會繼續用快取裡的舊檔案 -->
+<link rel="stylesheet" href="assets/style.css?v=2026.08.08.1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
 </head>
 <body>
@@ -52,6 +54,7 @@
       </nav>
       <div class="user-box">
         <span class="user-name" id="user-name"></span>
+        <span class="app-version" id="app-version" title="程式版本,回報問題時請附上"></span>
         <button id="btn-signout" class="btn btn-ghost btn-sm">登出</button>
       </div>
     </div>
@@ -269,6 +272,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js"></script>
+<script type="module" src="assets/app.js?v=2026.08.08.1"></script>
 </body>
 </html>

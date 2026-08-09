@@ -429,6 +429,9 @@ textarea { resize: vertical; }
 }
 .step-row[data-status="na"] { opacity: .7; }
 .step-sub .na-note { color: var(--text-muted); }
+/* 前一份公文還沒完成、還輪不到的步驟 */
+.step-sub .wait-note { color: var(--text-muted); }
+.step-sub .wait-note::before { content: "⏳ "; }
 
 /* 一起送的一批公文 */
 .bundle {

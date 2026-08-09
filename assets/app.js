@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=8";
+} from "./config.js?v=9";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -242,13 +242,20 @@ function retitleForYear(title, from, to) {
  * 但進度、公文位置、日期全部歸零,第一個步驟直接設為進行中。
  */
 function resetStepsForCopy(steps) {
-  return (steps || []).map((s, i) => ({
+  const rows = (steps || []).map((s) => ({
     title: s.title,
     stage: stageOf(s),
-    status: i === 0 ? "doing" : "todo",
+    status: "todo",
     bundleWithPrev: !!s.bundleWithPrev,
     note: "", due: "", location: "", doneAt: "", startedAt: ""
   }));
+  return startFirstBundle(rows);
+}
+
+/** 第一批公文預設就是「進行中」;一起送件的整批一起開始 */
+function startFirstBundle(rows) {
+  (bundlesOf(rows)[0] || []).forEach((i) => { rows[i].status = "doing"; });
+  return rows;
 }
 
 /** 把同一階段內「與上一個一起送」的步驟合併成一批公文 */
@@ -259,6 +266,74 @@ function groupBundles(rows) {
     else out.push([s]);
   });
   return out;
+}
+
+/**
+ * 整份步驟清單切成一批一批的公文,順序與畫面上完全一致:
+ * 先照階段排,再把「與上一個一起送」的併進同一批。
+ * 回傳每一批的原始索引,例如 [[0,1],[2],[3]]。
+ */
+function bundlesOf(steps) {
+  const indexed = (steps || []).map((s, i) => ({ ...s, _i: i }));
+  const out = [];
+  STAGES.forEach((st) => {
+    groupBundles(indexed.filter((s) => stageOf(s) === st.id))
+      .forEach((b) => out.push(b.map((s) => s._i)));
+  });
+  return out;
+}
+
+/** 這批公文辦完了沒;整批都是「本次不適用」也算過去了 */
+function bundleDone(steps, idxs) {
+  return idxs
+    .map((i) => steps[i])
+    .filter((s) => s && s.status !== "na")
+    .every((s) => s.status === "done");
+}
+
+/**
+ * 步驟的排序限制。公文是一份接一份跑的,前一批還沒完成就不該先動後面的,
+ * 但同一批一起送的文件不互相等待。
+ * 回傳 { locked:要不要擋, lead:是不是這批的第一份, waitFor:在等哪一份 }
+ */
+function gateOf(steps, i) {
+  const bundles = bundlesOf(steps);
+  const b = bundles.findIndex((idxs) => idxs.includes(i));
+  const out = { locked: false, lead: b === -1 || bundles[b][0] === i, waitFor: "" };
+  if (b <= 0) return out;
+
+  const prev = bundles[b - 1];
+  if (bundleDone(steps, prev)) return out;
+  const title = steps[prev[0]]?.title || "前一份公文";
+  return { ...out, locked: true, waitFor: prev.length > 1 ? `${title} 等 ${prev.length} 份` : title };
+}
+
+/** 一份文件改狀態時要跟著動的其他文件:同一批一起送的都同步 */
+function syncTargets(steps, i, value) {
+  const bundle = bundlesOf(steps).find((idxs) => idxs.includes(i)) || [i];
+  // 標成「本次不適用」是單一份文件的事,不能把整批都關掉;
+  // 其他狀態則整批同步,但已標不適用的維持不適用。
+  if (value === "na") return [i];
+  return bundle.filter((k) => k === i || steps[k]?.status !== "na");
+}
+
+/** 一批公文辦完後,下一批(整批)自動接成進行中;整批不適用的就跳過 */
+function advanceAfter(steps, i, today = todayStr()) {
+  const bundles = bundlesOf(steps);
+  const b = bundles.findIndex((idxs) => idxs.includes(i));
+  if (b === -1 || !bundleDone(steps, bundles[b])) return steps;
+
+  for (let k = b + 1; k < bundles.length; k++) {
+    const live = bundles[k].filter((n) => steps[n].status !== "na");
+    if (!live.length) continue;                       // 整批本次不適用,再往後找
+    if (live.every((n) => steps[n].status === "todo")) {
+      live.forEach((n) => {
+        steps[n] = { ...steps[n], status: "doing", startedAt: steps[n].startedAt || today };
+      });
+    }
+    break;                                            // 只推進下一批,更後面的維持原狀
+  }
+  return steps;
 }
 
 // 行事曆上的三種日期。用調色盤前三個色階,彼此在色盲模擬下也分得開;
@@ -888,9 +963,16 @@ function stepRowHtml(plan, s, editable, inBundle) {
     ? `<span class="running">已進行 ${daysBetween(s.startedAt, today)} 天(${esc(s.startedAt)} 起)</span>`
     : "";
 
+  // 還沒輪到的步驟:前一批公文沒完成前,不讓它改成進行中或已完成
+  const gate = gateOf(plan.steps || [], s._i);
+  const waitHtml = gate.locked && gate.lead && s.status === "todo"
+    ? `<span class="wait-note">等「${esc(gate.waitFor)}」完成</span>`
+    : "";
+
   const sub = [
     running,
     dueHtml,
+    waitHtml,
     na ? `<span class="na-note">本次不需要辦理</span>` : "",
     s.status === "done" && s.doneAt ? `<span class="done-at">✓ ${esc(s.doneAt)} 完成</span>` : "",
     s.note ? `<span>${esc(s.note)}</span>` : ""
@@ -898,9 +980,14 @@ function stepRowHtml(plan, s, editable, inBundle) {
 
   const loc = s.location || DEFAULT_UNIT;
   const statusSelect = `
-    <select class="step-status" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="步驟狀態">
-      ${STEP_STATUSES.map((v) =>
-        `<option value="${v}"${s.status === v ? " selected" : ""}>${STEP_LABEL[v]}</option>`).join("")}
+    <select class="step-status" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="步驟狀態"${
+      gate.locked ? ` title="要等「${esc(gate.waitFor)}」完成"` : ""}>
+      ${STEP_STATUSES.map((v) => {
+        // 鎖住的步驟仍可先標「本次不適用」,只是不能搶在前一批公文之前開始
+        const off = gate.locked && (v === "doing" || v === "done") && s.status !== v;
+        return `<option value="${v}"${s.status === v ? " selected" : ""}${off ? " disabled" : ""}>${
+          STEP_LABEL[v]}</option>`;
+      }).join("")}
     </select>`;
 
   const controls = editable
@@ -988,7 +1075,8 @@ function stepsHtml(plan, editable) {
         <div class="bundle">
           <div class="bundle-head">
             <span class="bundle-tag"><span aria-hidden="true">📎</span>一起送件</span>
-            <span class="muted small">${live.length} 份文件併成一份公文${naCount ? `,另 ${naCount} 份本次不適用` : ""}</span>
+            <span class="muted small">${live.length} 份文件併成一份公文,狀態一起更新${
+              naCount ? `(另 ${naCount} 份本次不適用)` : ""}</span>
           </div>
           ${bundle.map((s) => stepRowHtml(plan, s, editable, true)).join("")}
           ${foot}
@@ -1486,10 +1574,22 @@ document.addEventListener("change", async (e) => {
   const isBundle = sel.classList.contains("bundle-loc");
   const isLoc = isBundle || sel.classList.contains("step-loc");
 
+  const idx = Number(sel.dataset.step);
+
+  // 改狀態時,同一批一起送的文件要一起動;
+  // 前一批公文還沒完成就不能先開始(下拉選單已擋,這裡再保險一次)。
+  if (!isLoc) {
+    if ((sel.value === "doing" || sel.value === "done") && gateOf(all, idx).locked) {
+      sel.value = all[idx]?.status || "todo";
+      alert("前一份公文還沒完成,這個步驟還不能開始。");
+      return;
+    }
+  }
+
   // 要一起變動的步驟索引:整批送件會有好幾個
   const targets = isBundle
     ? sel.dataset.steps.split(",").filter(Boolean).map(Number)
-    : [Number(sel.dataset.step)];
+    : isLoc ? [idx] : syncTargets(all, idx, sel.value);
   if (!targets.length || !all[targets[0]]) return;
 
   const steps = all.map((s, i) => {
@@ -1514,13 +1614,8 @@ document.addEventListener("change", async (e) => {
     };
   });
 
-  // 一個步驟完成後,自動把後面第一個「未開始」的步驟接成「進行中」
-  // (本次不適用的步驟會被跳過)
-  if (!isLoc && sel.value === "done") {
-    const idx = targets[0];
-    const next = steps.findIndex((s, i) => i > idx && s.status === "todo");
-    if (next !== -1) steps[next] = { ...steps[next], status: "doing", startedAt: todayStr() };
-  }
+  // 一批公文辦完後,自動把下一批接成「進行中」(整批不適用的會被跳過)
+  if (!isLoc && sel.value === "done") advanceAfter(steps, idx);
 
   const patch = { steps, updatedAt: serverTimestamp() };
 
@@ -1661,10 +1756,8 @@ $("#btn-add-step").addEventListener("click", () => {
 });
 
 function applyTemplate(tpl) {
-  // 第一個步驟預設就是「進行中」,後面全部「未開始」
-  draftSteps = tpl.steps.map((s, i) => ({
-    ...s, note: "", status: i === 0 ? "doing" : "todo"
-  }));
+  // 第一批公文預設就是「進行中」(計畫書與概算表一起送就一起開始),後面全部「未開始」
+  draftSteps = startFirstBundle(tpl.steps.map((s) => ({ ...s, note: "", status: "todo" })));
   draftTouched = false;          // 範本原封不動,還不算使用者的心血
   lastTemplateId = tpl.id;
   $("#template-hint").textContent = tpl.desc;

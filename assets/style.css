@@ -133,7 +133,7 @@ h4 { font-size: .95rem; }
 }
 .user-box { display: flex; align-items: center; gap: 10px; }
 .user-name { color: var(--text-secondary); font-size: .9rem; }
-.app-version { color: var(--text-muted); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.app-version { color: var(--text-muted); font-size: .78rem; letter-spacing: .02em; }
 
 .panel-head { margin-bottom: 18px; }
 .panel-head h2 { margin-bottom: .25em; }

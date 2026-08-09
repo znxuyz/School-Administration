@@ -66,20 +66,34 @@ service cloud.firestore {
     // ---------- 行政計畫 ----------
     match /plans/{planId} {
 
+      // 選填欄位一律寫成「沒有這個欄位 || 內容正確」。
+      // 規則語言的 || 會短路,舊資料沒有該欄位時就不會去讀它(讀不存在的鍵會整條失敗),
+      // 所以這裡不能為了少打幾個字而把條件包成函式 —— 參數會被先算出來。
+      //
+      // 另外:規則語言沒有迴圈,無法逐一檢查 steps / flow 裡每個元素的內容,
+      // 只能限制筆數。每個步驟的欄位由前端存檔前整理(見 app.js 表單送出的地方)。
       function validPlan(d) {
         return d.title is string && d.title.size() > 0 && d.title.size() <= 200
-          && d.dept is string
-          && d.year is int
-          && d.steps is list
-          && d.steps.size() <= 100
+          && d.dept is string && d.dept.size() <= 20
+          // 民國學年度的合理範圍,擋掉誤填西元年之類的數字
+          && d.year is int && d.year >= 90 && d.year <= 200
+          && d.steps is list && d.steps.size() <= 100
+          && (!d.keys().hasAny(['term']) || d.term in ['0', '1', '2'])
+          && (!d.keys().hasAny(['note']) || (d.note is string && d.note.size() <= 2000))
+          && (!d.keys().hasAny(['startDate']) || (d.startDate is string && d.startDate.size() <= 10))
+          && (!d.keys().hasAny(['endDate']) || (d.endDate is string && d.endDate.size() <= 10))
           // 公文流轉紀錄與所在單位為選填(舊資料沒有這些欄位也不會被擋)
           && (!d.keys().hasAny(['flow']) || (d.flow is list && d.flow.size() <= 300))
           && (!d.keys().hasAny(['handovers']) || (d.handovers is list && d.handovers.size() <= 50))
           && (!d.keys().hasAny(['location']) || d.location is string)
-          && (!d.keys().hasAny(['budget']) || d.budget is number)
+          && (!d.keys().hasAny(['budget']) || (d.budget is number && d.budget >= 0))
           && (!d.keys().hasAny(['recurring']) || d.recurring in ['', 'half', 'year'])
+          && (!d.keys().hasAny(['ownerName']) || (d.ownerName is string && d.ownerName.size() <= 50))
+          && (!d.keys().hasAny(['updatedByName'])
+              || (d.updatedByName is string && d.updatedByName.size() <= 50))
           // 刪除是可還原的:deletedAt 有值代表在垃圾桶裡
           && (!d.keys().hasAny(['deletedAt']) || d.deletedAt is string)
+          && (!d.keys().hasAny(['deletedBy']) || (d.deletedBy is string && d.deletedBy.size() <= 50))
           // 掃描檔連結只收 http/https,前端也會再擋一次
           && (!d.keys().hasAny(['driveUrl'])
               || (d.driveUrl is string && d.driveUrl.size() <= 500

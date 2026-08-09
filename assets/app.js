@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=12";
+} from "./config.js?v=13";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -784,23 +784,32 @@ function optionsHtml(items) {
   }).join("");
 }
 
-function fillSelect(sel, items, { placeholder } = {}) {
+/** 換掉選單內容,但盡量保留使用者原本選的值(選項還在的話) */
+function fillSelectHtml(sel, html, { placeholder } = {}) {
   const keep = sel.value;
-  sel.innerHTML = (placeholder ? `<option value="">${esc(placeholder)}</option>` : "") + optionsHtml(items);
+  sel.innerHTML = (placeholder ? `<option value="">${esc(placeholder)}</option>` : "") + html;
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
 }
 
-/** 公文單位選單,依 config 的分組顯示 */
-function unitOptionsHtml() {
-  return UNIT_GROUPS.map((g) =>
-    `<optgroup label="${esc(g.label)}">${optionsHtml(g.units)}</optgroup>`).join("");
+const fillSelect = (sel, items, opts) => fillSelectHtml(sel, optionsHtml(items), opts);
+
+/**
+ * 公文單位的選項,卡片與篩選列共用同一份來源。
+ * 「承辦人手上」代表沒有送出去,值是空字串:
+ *   - 卡片上的位置選單要有它(選了等於文件收回自己手上)
+ *   - 篩選列不需要,「公文所在」問的是送到哪裡去了,篩自己手上等於沒篩
+ */
+function unitOptionsHtml({ selected = null, withDefault = false } = {}) {
+  const mark = (v) => (selected !== null && (selected || "") === v ? " selected" : "");
+  return (withDefault ? `<option value=""${mark("")}>${esc(DEFAULT_UNIT)}</option>` : "") +
+    UNIT_GROUPS
+      .filter((g) => !g.units.includes(DEFAULT_UNIT))
+      .map((g) => `<optgroup label="${esc(g.label)}">${g.units
+        .map((u) => `<option value="${esc(u)}"${mark(u)}>${esc(u)}</option>`).join("")}</optgroup>`)
+      .join("");
 }
 
-function fillUnitSelect(sel, { placeholder } = {}) {
-  const keep = sel.value;
-  sel.innerHTML = (placeholder ? `<option value="">${esc(placeholder)}</option>` : "") + unitOptionsHtml();
-  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
-}
+const fillUnitSelect = (sel, opts) => fillSelectHtml(sel, unitOptionsHtml(), opts);
 
 function fillOwnerFilter() {
   // 掃一次就好:同一個 Email 只留第一次看到的姓名
@@ -1002,12 +1011,14 @@ function meterHtml(plan) {
     </div>`;
 }
 
-/** 單位下拉選單的選項(第一個是「承辦人手上」,值為空字串) */
-function unitOptions(loc) {
-  return `<option value=""${loc === DEFAULT_UNIT ? " selected" : ""}>${esc(DEFAULT_UNIT)}</option>` +
-    UNIT_GROUPS.filter((g) => g.label !== "承辦人").map((g) =>
-      `<optgroup label="${esc(g.label)}">${g.units.map((u) =>
-        `<option value="${esc(u)}"${loc === u ? " selected" : ""}>${esc(u)}</option>`).join("")}</optgroup>`).join("");
+/** 步驟狀態的選項。locked = 前一批公文還沒完成,不能選「進行中」「已完成」 */
+function statusOptionsHtml(current, locked = false) {
+  return STEP_STATUSES.map((v) => {
+    // 鎖住的步驟仍可先標「本次不適用」,只是不能搶在前一批公文之前開始
+    const off = locked && (v === "doing" || v === "done") && current !== v;
+    return `<option value="${v}"${current === v ? " selected" : ""}${off ? " disabled" : ""}>${
+      STEP_LABEL[v]}</option>`;
+  }).join("");
 }
 
 /** 一列步驟。inBundle 為 true 時不顯示個別位置選單,位置由整批共用 */
@@ -1054,19 +1065,14 @@ function stepRowHtml(plan, s, editable, inBundle) {
   const statusSelect = `
     <select class="step-status" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="步驟狀態"${
       gate.locked ? ` title="要等「${esc(gate.waitFor)}」完成"` : ""}>
-      ${STEP_STATUSES.map((v) => {
-        // 鎖住的步驟仍可先標「本次不適用」,只是不能搶在前一批公文之前開始
-        const off = gate.locked && (v === "doing" || v === "done") && s.status !== v;
-        return `<option value="${v}"${s.status === v ? " selected" : ""}${off ? " disabled" : ""}>${
-          STEP_LABEL[v]}</option>`;
-      }).join("")}
+      ${statusOptionsHtml(s.status, gate.locked)}
     </select>`;
 
   const controls = editable
     ? `<div class="step-controls">
          ${inBundle || na ? "" : `
            <select class="step-loc" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="這份文件目前在哪">
-             ${unitOptions(loc)}
+             ${unitOptionsHtml({ selected: s.location || "", withDefault: true })}
            </select>`}
          ${statusSelect}
        </div>`
@@ -1136,7 +1142,8 @@ function stepsHtml(plan, editable) {
         ? `<div class="bundle-foot">
              <span class="muted small">這批文件目前在</span>
              <select class="bundle-loc" data-plan="${esc(plan.id)}" data-steps="${idxs}"
-                     aria-label="這批文件目前在哪">${unitOptions(loc)}</select>
+                     aria-label="這批文件目前在哪">${
+                       unitOptionsHtml({ selected: loc === DEFAULT_UNIT ? "" : loc, withDefault: true })}</select>
              ${daysTag}
            </div>`
         : (live.length
@@ -1604,6 +1611,20 @@ formHo.addEventListener("submit", async (e) => {
 
 /* ---------------- 計畫卡互動 ---------------- */
 
+/**
+ * 卡片上的即時更新。一律蓋上「誰在什麼時候改的」,
+ * 失敗就把原因講出來 —— 不要讓老師以為存好了,其實沒有。
+ */
+async function patchPlan(id, patch, what = "更新") {
+  try {
+    await updateDoc(doc(db, "plans", id), { ...patch, ...stamp() });
+    return true;
+  } catch (err) {
+    alert(`${what}失敗:${err.message}`);
+    return false;
+  }
+}
+
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
@@ -1622,23 +1643,9 @@ document.addEventListener("click", async (e) => {
   } else if (act === "delete") {
     // 丟進垃圾桶而不是真的刪掉,誤刪救得回來
     if (!confirm(`確定要刪除「${plan.title}」嗎?\n會移到垃圾桶,之後可以還原。`)) return;
-    try {
-      await updateDoc(doc(db, "plans", plan.id), {
-        deletedAt: todayStr(),
-        deletedBy: state.member?.name || "",
-        ...stamp()
-      });
-    } catch (err) {
-      alert(`刪除失敗:${err.message}`);
-    }
+    await patchPlan(plan.id, { deletedAt: todayStr(), deletedBy: state.member?.name || "" }, "刪除");
   } else if (act === "restore") {
-    try {
-      await updateDoc(doc(db, "plans", plan.id), {
-        deletedAt: "", deletedBy: "", ...stamp()
-      });
-    } catch (err) {
-      alert(`還原失敗:${err.message}`);
-    }
+    await patchPlan(plan.id, { deletedAt: "", deletedBy: "" }, "還原");
   } else if (act === "purge") {
     if (!confirm(`要永久刪除「${plan.title}」嗎?\n這次是真的刪掉,無法再還原。`)) return;
     try {
@@ -1652,22 +1659,11 @@ document.addEventListener("click", async (e) => {
     const f = (plan.flow || [])[i];
     if (!f) return;
     if (!confirm(`要刪掉這筆流轉紀錄嗎?\n${f.date} ${f.from || "—"} → ${f.to}\n\n文件目前的位置不會被更動。`)) return;
-    try {
-      await updateDoc(doc(db, "plans", plan.id), {
-        flow: (plan.flow || []).filter((_, k) => k !== i),
-        ...stamp()
-      });
-    } catch (err) {
-      alert(`刪除失敗:${err.message}`);
-    }
+    await patchPlan(plan.id, { flow: (plan.flow || []).filter((_, k) => k !== i) }, "刪除");
   } else if (act === "recur-done") {
     // 已經另外建好下一次了,不用再提醒
     if (!confirm(`「${plan.title}」不再提醒下一次了嗎?`)) return;
-    try {
-      await updateDoc(doc(db, "plans", plan.id), { recurring: "", ...stamp() });
-    } catch (err) {
-      alert(`更新失敗:${err.message}`);
-    }
+    await patchPlan(plan.id, { recurring: "" }, "更新");
   }
 });
 
@@ -1725,7 +1721,7 @@ document.addEventListener("change", async (e) => {
   // 一批公文辦完後,自動把下一批接成「進行中」(整批不適用的會被跳過)
   if (!isLoc && sel.value === "done") advanceAfter(steps, idx);
 
-  const patch = { steps, ...stamp() };
+  const patch = { steps };
 
   // 位置有變動就自動留下一筆流轉紀錄,老師不必額外填表。
   // 同一天同一份文件再改一次算更正,不會多留一筆(見 mergeFlow)。
@@ -1742,11 +1738,7 @@ document.addEventListener("change", async (e) => {
     if (entry.from !== entry.to) patch.flow = mergeFlow(plan.flow, entry);
   }
 
-  try {
-    await updateDoc(doc(db, "plans", plan.id), patch);
-  } catch (err) {
-    alert(`更新失敗:${err.message}`);
-  }
+  await patchPlan(plan.id, patch);
 });
 
 /* ---------------- 計畫編輯對話框 ---------------- */
@@ -1775,10 +1767,7 @@ function renderStepEditor() {
       </select>
       <input value="${esc(s.title)}" data-k="title" list="sug-${stageOf(s)}"
              placeholder="輸入或從清單選擇" maxlength="80" aria-label="步驟名稱">
-      <select data-k="status" aria-label="步驟狀態">
-        ${STEP_STATUSES.map((v) =>
-          `<option value="${v}"${s.status === v ? " selected" : ""}>${STEP_LABEL[v]}</option>`).join("")}
-      </select>
+      <select data-k="status" aria-label="步驟狀態">${statusOptionsHtml(s.status)}</select>
       <label class="same-doc" title="${canBundle
         ? "與上一個步驟併成同一份公文一起送,狀態也會一起更新"
         : "這是這個階段的第一個步驟,沒有可以併的上一份公文"}">
@@ -1997,7 +1986,8 @@ formPlan.addEventListener("submit", async (e) => {
     term: pf("term").value,
     startDate,
     endDate,
-    budget: Number(pf("budget").value) || 0,
+    // 負數擋在這裡,安全規則也只收 0 以上
+    budget: Math.max(0, Number(pf("budget").value) || 0),
     recurring: RECURRENCES.some((r) => r.id === pf("recurring").value) ? pf("recurring").value : "",
     driveUrl: safeUrl(pf("driveUrl").value),
     note: pf("note").value.trim(),

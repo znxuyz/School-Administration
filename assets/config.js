@@ -1,21 +1,31 @@
 // ---------------------------------------------------------------
-// 版本號:改版時只要把 APP_BUILD 加一,境界會自動往上晉升一階。
+// 版本號:改版時只要把 APP_BUILD 加一,代號會自動換下一個。
 // 別忘了執行 ./bump.sh <新的號碼> 讓 index.html 與 sw.js 一起更新,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
 // ---------------------------------------------------------------
-export const APP_BUILD = 10;
+export const APP_BUILD = 11;
 
-// 版本代號用修仙境界表示,畫面上不出現阿拉伯數字。
-// 每三次改版晉升一個大境界:練氣初期 → 練氣中期 → 練氣後期 → 築基初期…
-export const REALMS = [
-  "練氣", "築基", "金丹", "元嬰", "化神",
-  "煉虛", "合體", "大乘", "渡劫", "飛昇"
+// 版本代號用單字表示,畫面上不出現阿拉伯數字。
+// 一次改版換一個代號,五十個輪完再從「朔」開始。
+export const CODENAMES = [
+  "朔", "曦", "晦", "寂", "縈", "澄", "漾", "泠", "潛", "洄",
+  "霽", "霧", "霜", "岑", "嶼", "隙", "痕", "墜", "浮", "棲",
+  "逝", "遙", "徊", "渡", "寧", "妄", "惑", "慕", "憫", "悵",
+  "縛", "解", "歸", "離", "契", "寞", "冥", "幽", "燼", "灼",
+  "凜", "融", "裂", "湮", "寰", "弦", "紋", "幻", "蛻", "寂"
 ];
-export const SUBSTAGES = ["初期", "中期", "後期"];
 
-const stageIndex = (APP_BUILD - 1) % (REALMS.length * SUBSTAGES.length);
-export const APP_VERSION =
-  REALMS[Math.floor(stageIndex / SUBSTAGES.length)] + SUBSTAGES[stageIndex % SUBSTAGES.length];
+// 代號從第 11 版開始輪(在這之前用的是修仙境界)。
+// 版本號本身要一直往上加才擋得住瀏覽器快取,所以不從 1 重來,改用這個起點換算。
+export const CODE_BASE = 11;
+
+/** 某一版的代號 */
+export function versionFor(build) {
+  const n = CODENAMES.length;
+  return `代號:${CODENAMES[((build - CODE_BASE) % n + n) % n]}`;
+}
+
+export const APP_VERSION = versionFor(APP_BUILD);
 
 // Firebase 專案設定。
 // 這段設定屬於公開資訊,放在前端是 Firebase 的正常用法;

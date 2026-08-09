@@ -24,10 +24,10 @@ sed -i "s/?v=${current}\"/?v=${next}\"/g"                             index.html
 sed -i "s|\./config\.js?v=${current}\"|./config.js?v=${next}\"|"      assets/app.js
 sed -i "s/const BUILD = \"${current}\"/const BUILD = \"${next}\"/"    sw.js
 
-# 境界名稱直接讀改好的 config.js,和程式顯示的完全一致
-realm=$(node -e "import('./assets/config.js').then(c => console.log(c.APP_VERSION));")
+# 代號直接讀改好的 config.js,和程式顯示的完全一致
+code=$(node -e "import('./assets/config.js').then(c => console.log(c.APP_VERSION));")
 
-echo "版本號 ${current} → ${next}(${realm})"
+echo "版本號 ${current} → ${next}(${code})"
 echo
 grep -n "APP_BUILD"      assets/config.js
 grep -n "?v="            index.html

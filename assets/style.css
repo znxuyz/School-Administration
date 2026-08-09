@@ -416,6 +416,10 @@ textarea { resize: vertical; }
   background: var(--accent-wash); color: var(--text-secondary);
   border-radius: 4px; padding: 1px 7px; font-size: .78rem;
 }
+/* 刪除單筆流轉紀錄:平常低調地靠右,滑過或聚焦才明顯 */
+.flow-del { margin-left: auto; opacity: .45; }
+.flow-list li:hover .flow-del,
+.flow-del:focus-visible { opacity: 1; }
 .step-row {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 9px 0; border-bottom: 1px solid var(--hairline);

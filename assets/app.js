@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=11";
+} from "./config.js?v=12";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -376,6 +376,51 @@ function monthCells(y, m, today = todayStr()) {
   return cells.slice(0, n);
 }
 
+// 清單排序方式。預設照結算期限,最急的排前面 ——
+// 若預設照「最近更新」排,老師每改一個步驟那張卡片就會跳到最上面,
+// 清單會在手指下面亂動,很難一件一件往下處理。
+const SORTS = [
+  { id: "due", label: "結算期限最近" },
+  { id: "updated", label: "最近更新" },
+  { id: "title", label: "計畫名稱" }
+];
+
+function sortPlans(plans, mode = "due") {
+  const byUpdated = (a, b) =>
+    (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0);
+  const rows = [...plans];
+
+  if (mode === "updated") return rows.sort(byUpdated);
+  if (mode === "title") {
+    return rows.sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "zh-Hant"));
+  }
+  // 沒有日期的計畫排最後;同一天到期的再照最近更新
+  return rows.sort((a, b) => {
+    const x = settlementDueOf(a), y = settlementDueOf(b);
+    if (x === y) return byUpdated(a, b);
+    if (!x) return 1;
+    if (!y) return -1;
+    return x < y ? -1 : 1;
+  });
+}
+
+/**
+ * 位置變動要寫進公文流轉紀錄。
+ * 同一天、同一份文件又改一次視為「更正」:蓋掉當天那一筆,不會多留一筆錯的;
+ * 改回原本的位置(繞回起點)就整筆拿掉。
+ */
+function mergeFlow(flow, entry) {
+  const rows = [...(flow || [])];
+  let i = -1;
+  rows.forEach((f, k) => { if (f.date === entry.date && f.step === entry.step) i = k; });
+  if (i === -1) return [...rows, entry];
+
+  const fixed = { ...rows[i], to: entry.to, stage: entry.stage };
+  if (fixed.from === fixed.to) return rows.filter((_, k) => k !== i);
+  rows[i] = fixed;
+  return rows;
+}
+
 /** 搜尋比對的範圍:計畫本身、承辦人,以及每個步驟的名稱與備註 */
 function searchText(plan) {
   return [
@@ -490,6 +535,12 @@ function settlementText(plan) {
 
 /* ---------------- 應用狀態 ---------------- */
 
+/** 篩選條件的預設值。初始化和「重設」按鈕共用同一份,以後加欄位不會漏改 */
+const defaultFilters = () => ({
+  year: String(currentAcademicYear()),
+  dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false, trash: false
+});
+
 const state = {
   user: null,        // Firebase Auth 使用者
   member: null,      // allowlist 中的成員資料
@@ -499,12 +550,16 @@ const state = {
   tab: "dashboard",
   expanded: new Set(),          // 展開步驟的計畫 id
   cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
-  filters: {
-    year: String(currentAcademicYear()),
-    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false, trash: false
-  },
+  filters: defaultFilters(),
+  sort: "due",       // 排序是檢視方式,不算篩選條件,所以不放在 filters 裡
   unsubscribe: []
 };
+
+/**
+ * 每次寫入都蓋一個「誰在什麼時候動的」的章。
+ * 主任看同處室的計畫時,才看得出最後是承辦人自己改的還是管理員代改的。
+ */
+const stamp = () => ({ updatedAt: serverTimestamp(), updatedByName: state.member?.name || "" });
 
 /** 舊資料的 teacher 一律視為組長 */
 const roleOf = (m) => {
@@ -654,12 +709,10 @@ function subscribeData() {
   const buckets = queries.map(() => []);
 
   const merge = () => {
-    // 多個查詢可能撈到同一筆,用 id 去重後依最後更新時間排序
+    // 多個查詢可能撈到同一筆,用 id 去重(排序留到畫面上,依老師選的方式)
     const byId = new Map();
     buckets.flat().forEach((p) => byId.set(p.id, p));
-    state.plans = [...byId.values()]
-      .filter(canSee)              // 第二道防線,見 canSee 的說明
-      .sort((a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0));
+    state.plans = [...byId.values()].filter(canSee);   // 第二道防線,見 canSee 的說明
     fillYearSelects();     // 學年度選單要包含資料裡實際出現過的年度
     fillOwnerFilter();
     renderDashboard();
@@ -822,6 +875,12 @@ for (const [key, sel] of Object.entries(FILTER_FIELDS)) {
     }
   });
 }
+$("#f-sort").addEventListener("change", (e) => {
+  state.sort = SORTS.some((s) => s.id === e.target.value) ? e.target.value : "due";
+  renderDashboard();
+  renderMine();
+});
+
 // 點統計磚等同於切換狀態篩選;再點一次取消
 $("#stat-row").addEventListener("click", (e) => {
   const tile = e.target.closest("[data-stat]");
@@ -843,10 +902,7 @@ $("#f-trash").addEventListener("change", (e) => {
 });
 
 $("#f-reset").addEventListener("click", () => {
-  state.filters = {
-    year: String(currentAcademicYear()),
-    dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false, trash: false
-  };
+  state.filters = defaultFilters();
   for (const [key, sel] of Object.entries(FILTER_FIELDS)) $(sel).value = state.filters[key];
   $("#f-trash").checked = false;
   renderDashboard();
@@ -1125,9 +1181,12 @@ function handoverHtml(plan) {
     </div>`;
 }
 
-/** 公文流轉紀錄 */
-function flowHtml(plan) {
-  const flow = [...(plan.flow || [])].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+/** 公文流轉紀錄。記錄是自動寫的,選錯單位時要能把那一筆刪掉 */
+function flowHtml(plan, editable) {
+  // 帶著原始索引再排序,刪除時才知道要刪陣列裡的哪一筆
+  const flow = (plan.flow || [])
+    .map((f, i) => ({ ...f, _i: i }))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || b._i - a._i);
   if (!flow.length) return "";
 
   return `
@@ -1141,6 +1200,9 @@ function flowHtml(plan) {
             <span class="flow-move">${esc(f.from || "—")} <span aria-hidden="true">→</span> <b>${esc(f.to)}</b></span>
             ${f.stage ? `<span class="flow-tag">${esc(STAGE_LABEL[f.stage] || "")}階段</span>` : ""}
             ${f.note ? `<span class="muted">${esc(f.note)}</span>` : ""}
+            ${editable ? `<button class="icon-btn icon-danger flow-del" data-act="flow-del"
+                    data-id="${esc(plan.id)}" data-flow="${f._i}"
+                    title="刪除這筆紀錄" aria-label="刪除這筆流轉紀錄">✕</button>` : ""}
           </li>`).join("")}
       </ol>
     </div>`;
@@ -1201,7 +1263,8 @@ function planCard(plan, { editable }) {
     period,
     settlementText(plan),
     plan.budget ? `核定 ${money(plan.budget)} 元` : "",
-    relativeDays(toDate(plan.updatedAt))
+    // 最後一次更新的人:主任看同處室的計畫時才知道是誰動的
+    relativeDays(toDate(plan.updatedAt)) + (plan.updatedByName ? `・${plan.updatedByName}` : "")
   ].filter(Boolean);
 
   return `
@@ -1237,7 +1300,7 @@ function planCard(plan, { editable }) {
       <button class="toggle-steps" data-act="toggle" data-id="${esc(plan.id)}">
         ${open ? "▲ 收合明細" : `▼ 展開明細(${(plan.steps || []).length} 個步驟)`}
       </button>
-      ${open ? stepsHtml(plan, editable) + flowHtml(plan) + handoverHtml(plan) : ""}
+      ${open ? stepsHtml(plan, editable) + flowHtml(plan, editable) + handoverHtml(plan) : ""}
     </article>`;
 }
 
@@ -1267,7 +1330,7 @@ $("#recur-banner").addEventListener("click", (e) => {
 });
 
 function renderDashboard() {
-  const plans = applyFilters(state.plans);
+  const plans = sortPlans(applyFilters(state.plans), state.sort);
   syncFilterBox();
   renderRecurBanner();
   renderStats(plans);
@@ -1283,7 +1346,7 @@ function renderDashboard() {
 }
 
 function renderMine() {
-  const mine = livePlans().filter(isMine);
+  const mine = sortPlans(livePlans().filter(isMine), state.sort);
   $("#mine-list").innerHTML = mine.length
     ? mine.map((p) => planCard(p, { editable: true })).join("")
     : `<div class="empty">你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。</div>`;
@@ -1465,8 +1528,19 @@ function openHandover(m) {
       </label>`;
   }).join("");
   $("#ho-all").checked = true;
+  $("#ho-dept").checked = true;
+  syncHandoverDeptLabel();
   dlgHo.showModal();
 }
+
+/** 接手人換了,「一併改處室」的說明也要跟著換 */
+function syncHandoverDeptLabel() {
+  const to = state.members.find((x) => x.email === $("#ho-to").value);
+  $("#ho-dept-label").textContent = to?.dept
+    ? `一併把承辦處室改成「${to.dept}」`
+    : "一併把承辦處室改成接手人的處室";
+}
+$("#ho-to").addEventListener("change", syncHandoverDeptLabel);
 
 $("#ho-all").addEventListener("change", (e) => {
   $$(".ho-pick").forEach((c) => { c.checked = e.target.checked; });
@@ -1497,6 +1571,11 @@ formHo.addEventListener("submit", async (e) => {
     byName: state.member?.name || ""
   };
 
+  // 承辦處室決定哪一位主任看得到,交給別處室的同仁時要一起換,
+  // 否則新承辦人的主任看不到、原處室主任卻還看得到。
+  const patch = { ownerEmail: to.email, ownerName: to.name };
+  if ($("#ho-dept").checked && to.dept) patch.dept = to.dept;
+
   try {
     // 一筆一筆更新;中途失敗要讓使用者知道已經轉了幾筆
     let ok = 0;
@@ -1504,10 +1583,9 @@ formHo.addEventListener("submit", async (e) => {
       const plan = state.plans.find((p) => p.id === id);
       if (!plan) continue;
       await updateDoc(doc(db, "plans", id), {
-        ownerEmail: to.email,
-        ownerName: to.name,
+        ...patch,
         handovers: [...(plan.handovers || []), entry],
-        updatedAt: serverTimestamp()
+        ...stamp()
       });
       ok++;
     }
@@ -1548,7 +1626,7 @@ document.addEventListener("click", async (e) => {
       await updateDoc(doc(db, "plans", plan.id), {
         deletedAt: todayStr(),
         deletedBy: state.member?.name || "",
-        updatedAt: serverTimestamp()
+        ...stamp()
       });
     } catch (err) {
       alert(`刪除失敗:${err.message}`);
@@ -1556,7 +1634,7 @@ document.addEventListener("click", async (e) => {
   } else if (act === "restore") {
     try {
       await updateDoc(doc(db, "plans", plan.id), {
-        deletedAt: "", deletedBy: "", updatedAt: serverTimestamp()
+        deletedAt: "", deletedBy: "", ...stamp()
       });
     } catch (err) {
       alert(`還原失敗:${err.message}`);
@@ -1568,11 +1646,25 @@ document.addEventListener("click", async (e) => {
     } catch (err) {
       alert(`永久刪除失敗:${err.message}`);
     }
+  } else if (act === "flow-del") {
+    // 紀錄是位置一改就自動寫的,選錯單位時要刪得掉
+    const i = Number(btn.dataset.flow);
+    const f = (plan.flow || [])[i];
+    if (!f) return;
+    if (!confirm(`要刪掉這筆流轉紀錄嗎?\n${f.date} ${f.from || "—"} → ${f.to}\n\n文件目前的位置不會被更動。`)) return;
+    try {
+      await updateDoc(doc(db, "plans", plan.id), {
+        flow: (plan.flow || []).filter((_, k) => k !== i),
+        ...stamp()
+      });
+    } catch (err) {
+      alert(`刪除失敗:${err.message}`);
+    }
   } else if (act === "recur-done") {
     // 已經另外建好下一次了,不用再提醒
     if (!confirm(`「${plan.title}」不再提醒下一次了嗎?`)) return;
     try {
-      await updateDoc(doc(db, "plans", plan.id), { recurring: "", updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, "plans", plan.id), { recurring: "", ...stamp() });
     } catch (err) {
       alert(`更新失敗:${err.message}`);
     }
@@ -1633,21 +1725,21 @@ document.addEventListener("change", async (e) => {
   // 一批公文辦完後,自動把下一批接成「進行中」(整批不適用的會被跳過)
   if (!isLoc && sel.value === "done") advanceAfter(steps, idx);
 
-  const patch = { steps, updatedAt: serverTimestamp() };
+  const patch = { steps, ...stamp() };
 
-  // 位置有變動就自動留下一筆流轉紀錄,老師不必額外填表
+  // 位置有變動就自動留下一筆流轉紀錄,老師不必額外填表。
+  // 同一天同一份文件再改一次算更正,不會多留一筆(見 mergeFlow)。
   if (isLoc) {
     const first = all[targets[0]];
-    const from = first.location || DEFAULT_UNIT;
-    const to = sel.value || DEFAULT_UNIT;
-    if (from !== to) {
-      patch.flow = [...(plan.flow || []), {
-        date: todayStr(), from, to,
-        step: targets.length > 1 ? `${first.title} 等 ${targets.length} 份` : first.title,
-        stage: stageOf(first),
-        note: ""
-      }];
-    }
+    const entry = {
+      date: todayStr(),
+      from: first.location || DEFAULT_UNIT,
+      to: sel.value || DEFAULT_UNIT,
+      step: targets.length > 1 ? `${first.title} 等 ${targets.length} 份` : first.title,
+      stage: stageOf(first),
+      note: ""
+    };
+    if (entry.from !== entry.to) patch.flow = mergeFlow(plan.flow, entry);
   }
 
   try {
@@ -1910,7 +2002,7 @@ formPlan.addEventListener("submit", async (e) => {
     driveUrl: safeUrl(pf("driveUrl").value),
     note: pf("note").value.trim(),
     steps,
-    updatedAt: serverTimestamp()
+    ...stamp()
   };
 
   if (!payload.title || !payload.dept) {

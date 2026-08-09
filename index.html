@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=11">
+<link rel="stylesheet" href="assets/style.css?v=12">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -120,6 +120,14 @@
             <option value="done">已完成</option>
           </select>
         </label>
+        <label class="field">
+          <span>排序</span>
+          <select id="f-sort">
+            <option value="due">結算期限最近</option>
+            <option value="updated">最近更新</option>
+            <option value="title">計畫名稱</option>
+          </select>
+        </label>
         <label class="field field-grow">
           <span>搜尋</span>
           <input id="f-q" type="search" placeholder="計畫名稱關鍵字" autocomplete="off">
@@ -195,7 +203,7 @@
 
     <p id="copy-hint" class="status-line status-info" hidden>
       步驟名稱、階段與公文批次設定會照舊帶過來,<strong>進度、公文位置、日期、經費一律歸零</strong>,
-      第一個步驟自動設為進行中。原本的計畫不會被更動。
+      第一批公文自動設為進行中。原本的計畫不會被更動。
     </p>
 
     <label class="field" id="template-field">
@@ -293,6 +301,13 @@
       <span>移交給 <b class="req">*</b></span>
       <select name="to" id="ho-to" required></select>
     </label>
+    <label class="trash-toggle">
+      <input type="checkbox" id="ho-dept" checked>
+      <span id="ho-dept-label">一併把承辦處室改成接手人的處室</span>
+    </label>
+    <p class="muted small">
+      承辦處室決定哪一位主任看得到這個計畫,交給別的處室時建議一起改。
+    </p>
 
     <div class="steps-head">
       <h4>要移交的計畫</h4>
@@ -350,6 +365,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=11"></script>
+<script type="module" src="assets/app.js?v=12"></script>
 </body>
 </html>

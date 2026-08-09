@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=9";
+} from "./config.js?v=10";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -163,10 +163,6 @@ function effectiveDue(step, plan) {
 }
 
 /**
- * 還在外面的文件:有指定所在單位、而且不是「承辦人手上」、也還沒完成的步驟。
- * 公文位置是掛在每一份文件(步驟)上的,不是整個計畫共用一個位置。
- */
-/**
  * 這份文件是哪天送出去的。
  * 新資料直接看 sentAt;舊資料沒有這個欄位,就回頭查流轉紀錄裡
  * 最後一次送到目前這個單位的日期。
@@ -197,6 +193,10 @@ function hasStuckDoc(plan, today = todayStr()) {
   return activeSteps(plan).some((s) => isStuck(s, plan, today));
 }
 
+/**
+ * 還在外面的文件:有指定所在單位、而且不是「承辦人手上」、也還沒完成的步驟。
+ * 公文位置是掛在每一份文件(步驟)上的,不是整個計畫共用一個位置。
+ */
 function documentsOut(plan) {
   const byUnit = new Map();
   activeSteps(plan)
@@ -239,7 +239,7 @@ function retitleForYear(title, from, to) {
 
 /**
  * 複製計畫時重設步驟:保留名稱、階段、批次設定,
- * 但進度、公文位置、日期全部歸零,第一個步驟直接設為進行中。
+ * 但進度、公文位置、日期全部歸零,第一批公文直接設為進行中。
  */
 function resetStepsForCopy(steps) {
   const rows = (steps || []).map((s) => ({
@@ -387,6 +387,22 @@ function searchText(plan) {
 /** 下一個要處理的步驟:第一個還沒完成、也不是「本次不適用」的 */
 function nextStep(plan) {
   return activeSteps(plan).find((s) => s.status !== "done") || null;
+}
+
+/**
+ * 卡片上「下一步」要顯示的字。
+ * 下一步如果是一起送的一批公文,就連同份數一起講,和展開後的批次一致。
+ */
+function nextStepText(plan) {
+  const nxt = nextStep(plan);
+  if (!nxt) return "";
+  const steps = plan.steps || [];
+  const i = steps.indexOf(nxt);
+  const bundle = (bundlesOf(steps).find((idxs) => idxs.includes(i)) || [])
+    .filter((k) => steps[k].status !== "na");
+  return bundle.length > 1
+    ? `${steps[bundle[0]].title} 等 ${bundle.length} 份`
+    : nxt.title;
 }
 
 /** 這個步驟距離期限還有幾天;null = 沒期限、已完成或本次不適用 */
@@ -734,13 +750,13 @@ function fillUnitSelect(sel, { placeholder } = {}) {
 }
 
 function fillOwnerFilter() {
-  const owners = [...new Set(livePlans().map((p) => (p.ownerEmail || "").toLowerCase()))]
-    .filter(Boolean)
-    .map((email) => {
-      const p = livePlans().find((x) => (x.ownerEmail || "").toLowerCase() === email);
-      return [email, p?.ownerName || email];
-    })
-    .sort((a, b) => a[1].localeCompare(b[1], "zh-Hant"));
+  // 掃一次就好:同一個 Email 只留第一次看到的姓名
+  const byEmail = new Map();
+  livePlans().forEach((p) => {
+    const email = (p.ownerEmail || "").toLowerCase();
+    if (email && !byEmail.has(email)) byEmail.set(email, p.ownerName || email);
+  });
+  const owners = [...byEmail].sort((a, b) => a[1].localeCompare(b[1], "zh-Hant"));
   fillSelect($("#f-owner"), owners, { placeholder: "全部" });
 
   // 選單裡已經沒有這個人了(例如計畫全部移交出去),把篩選清掉,
@@ -772,7 +788,7 @@ function initSelects() {
   fillSelect($("#member-role"), ROLES.map((r) => [r.id, r.label]));
 }
 initSelects();
-$("#app-version").textContent = APP_VERSION;   // APP_VERSION 本身就含有 v 開頭
+$("#app-version").textContent = APP_VERSION;   // 修仙境界當版本號,由 ./bump.sh 往上晉升
 
 // 註冊 service worker,讓系統可以「加到主畫面」、沒網路時也開得起來。
 // 失敗不影響使用(例如用 file:// 開啟時),所以直接忽略錯誤。
@@ -1141,9 +1157,9 @@ function planCard(plan, { editable }) {
   const legacy = plan.location && plan.location !== DEFAULT_UNIT && !out.length
     ? `<span class="loc-chip">📄 公文在:<b>${esc(plan.location)}</b></span>` : "";
   // 下一步:一眼看出現在該做什麼,不用展開明細
-  const nxt = nextStep(plan);
+  const nxt = nextStepText(plan);
   const nextChip = nxt
-    ? `<span class="next-chip"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.title)}</b></span>`
+    ? `<span class="next-chip"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt)}</b></span>`
     : ((plan.steps || []).length ? `<span class="next-chip done"><span aria-hidden="true">✓</span>全部步驟已完成</span>` : "");
 
   // 紙本跑完掃描上傳雲端後貼的連結
@@ -1656,7 +1672,10 @@ let lastTemplateId = "";
 const pf = (name) => formPlan.elements.namedItem(name);
 
 function renderStepEditor() {
-  $("#steps-editor").innerHTML = draftSteps.map((s, i) => `
+  $("#steps-editor").innerHTML = draftSteps.map((s, i) => {
+    // 「同批」是和上一個步驟併成同一份公文,所以只有上一列同階段時才勾得動
+    const canBundle = i > 0 && stageOf(draftSteps[i - 1]) === stageOf(s);
+    return `
     <div class="step-edit" data-i="${i}">
       <select data-k="stage" aria-label="所屬階段">
         ${STAGES.map((st) =>
@@ -1668,8 +1687,11 @@ function renderStepEditor() {
         ${STEP_STATUSES.map((v) =>
           `<option value="${v}"${s.status === v ? " selected" : ""}>${STEP_LABEL[v]}</option>`).join("")}
       </select>
-      <label class="same-doc" title="與上一個步驟併成同一份公文一起送">
-        <input type="checkbox" data-k="bundleWithPrev"${s.bundleWithPrev ? " checked" : ""}${i === 0 ? " disabled" : ""}>
+      <label class="same-doc" title="${canBundle
+        ? "與上一個步驟併成同一份公文一起送,狀態也會一起更新"
+        : "這是這個階段的第一個步驟,沒有可以併的上一份公文"}">
+        <input type="checkbox" data-k="bundleWithPrev"${
+          s.bundleWithPrev && canBundle ? " checked" : ""}${canBundle ? "" : " disabled"}>
         <span>同批</span>
       </label>
       <input class="step-note-input" value="${esc(s.note || "")}" data-k="note"
@@ -1684,7 +1706,8 @@ function renderStepEditor() {
         <button type="button" class="icon-btn icon-danger" data-del="${i}"
                 title="刪除" aria-label="刪除這個步驟">✕</button>
       </div>
-    </div>`).join("") ||
+    </div>`;
+  }).join("") ||
     `<p class="muted small">還沒有步驟。可以在上面挑一個範本,或按「＋ 新增步驟」自己加。</p>`;
 }
 
@@ -1865,7 +1888,12 @@ formPlan.addEventListener("submit", async (e) => {
         startedAt: status === "doing" ? (s.startedAt || todayStr()) : (s.startedAt || "")
       };
     })
-    .sort((a, b) => STAGE_IDS.indexOf(a.stage) - STAGE_IDS.indexOf(b.stage));
+    .sort((a, b) => STAGE_IDS.indexOf(a.stage) - STAGE_IDS.indexOf(b.stage))
+    // 每個階段的第一份公文沒有可以併的上一份,順手把殘留的「同批」清掉
+    .map((s, i, arr) => ({
+      ...s,
+      bundleWithPrev: s.bundleWithPrev && i > 0 && arr[i - 1].stage === s.stage
+    }));
 
   const startDate = pf("startDate").value || "";
   const endDate = pf("endDate").value || "";

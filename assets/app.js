@@ -529,9 +529,6 @@ function nextBundle(plan) {
   };
 }
 
-/** 卡片上「下一步」要顯示的字 */
-const nextStepText = (plan) => nextBundle(plan)?.text || "";
-
 /** 這個步驟距離期限還有幾天;null = 沒期限、已完成或本次不適用 */
 function daysLeft(step, today = todayStr(), plan = {}) {
   if (step.status === "done" || step.status === "na") return null;

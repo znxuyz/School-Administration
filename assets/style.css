@@ -349,22 +349,22 @@ textarea { resize: vertical; }
 .next-label b { overflow-wrap: anywhere; }
 .next-chip b { font-weight: 600; }
 .next-chip.done { background: var(--good-track); color: var(--text-primary); }
-/* 直接在卡片上把這一批打勾完成,不用展開明細 */
+/* 卡片上就能做的兩件事:先看/改公文位置,再打勾完成。
+   只有排在最後的那一顆往右吃掉膠囊的內距,不然兩個框會黏在一起 */
+.next-chip .next-loc {
+  width: auto; max-width: 160px;
+  margin: -3px 0 -3px 2px; padding: 3px 8px;
+  border-radius: 999px; font-size: .82rem;
+  border-color: rgba(255, 255, 255, .45);
+}
 .next-chip .next-done {
-  margin: -3px -8px -3px 2px; padding: 3px 10px;
+  margin: -3px -8px -3px 0; padding: 3px 10px;
   border-radius: 999px; font-size: .82rem;
   background: rgba(255, 255, 255, .18); color: #fff;
   border-color: rgba(255, 255, 255, .45);
 }
 .next-chip .next-done:hover { background: rgba(255, 255, 255, .3); border-color: #fff; }
-.next-chip .next-done:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-/* 這批文件現在在哪 —— 和「完成」放在一起,常用的兩件事都不必展開明細 */
-.next-chip .next-loc {
-  width: auto; max-width: 160px;
-  margin: -3px -8px -3px 0; padding: 3px 8px;
-  border-radius: 999px; font-size: .82rem;
-  border-color: rgba(255, 255, 255, .45);
-}
+.next-chip .next-done:focus-visible,
 .next-chip .next-loc:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
 .away-tag {
@@ -811,4 +811,5 @@ textarea { resize: vertical; }
   .next-label { flex: 1 1 100%; }
   .next-chip .next-done { margin: 0; }
   .next-chip .next-loc { margin: 0; flex: 1; max-width: none; }
+  .next-chip .next-label { margin-bottom: 2px; }
 }

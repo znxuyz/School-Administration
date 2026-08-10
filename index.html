@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=16">
+<link rel="stylesheet" href="assets/style.css?v=17">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -87,7 +87,36 @@
       </div>
 
       <div class="stat-row" id="stat-row"></div>
+      <p class="muted small board-scope" id="dashboard-scope"></p>
 
+      <div id="recur-banner" class="recur-banner" hidden></div>
+      <section id="week-box" class="week-box" aria-labelledby="week-title" hidden>
+        <div class="week-head">
+          <h3 id="week-title">本週待辦</h3>
+          <span class="muted small" id="week-sub"></span>
+        </div>
+        <ul id="week-list" class="week-list"></ul>
+      </section>
+
+      <div id="dashboard-list" class="plan-list"></div>
+    </section>
+
+    <!-- 搜尋 -->
+    <section id="panel-search" class="panel" hidden>
+      <div class="panel-head">
+        <h2>搜尋</h2>
+        <p class="muted">
+          關鍵字會比對計畫名稱、備註、承辦人,以及<strong>每個步驟的名稱與備註</strong>。
+          也可以只用下方的條件找,不一定要打字。這裡<strong>不受總覽的學年度限制</strong>,
+          往年的舊計畫一樣找得到。
+        </p>
+      </div>
+
+      <label class="field search-field">
+        <span class="sr-only">搜尋關鍵字</span>
+        <input id="search-q" type="search" autocomplete="off"
+               placeholder="例:勞保勞退、戶外教育、缺兩張發票">
+      </label>
       <details class="filter-box" id="filter-box">
         <summary><span>篩選條件</span><span class="filter-count" id="filter-count"></span></summary>
       <div class="filters" role="group" aria-label="篩選條件">
@@ -135,35 +164,6 @@
         <button id="f-reset" class="btn btn-ghost btn-sm">重設</button>
       </div>
       </details>
-
-      <div id="recur-banner" class="recur-banner" hidden></div>
-      <section id="week-box" class="week-box" aria-labelledby="week-title" hidden>
-        <div class="week-head">
-          <h3 id="week-title">本週待辦</h3>
-          <span class="muted small" id="week-sub"></span>
-        </div>
-        <ul id="week-list" class="week-list"></ul>
-      </section>
-
-      <div id="dashboard-list" class="plan-list"></div>
-    </section>
-
-    <!-- 搜尋 -->
-    <section id="panel-search" class="panel" hidden>
-      <div class="panel-head">
-        <h2>搜尋</h2>
-        <p class="muted">
-          比對計畫名稱、備註、承辦人,以及<strong>每個步驟的名稱與備註</strong>。
-          範圍是你看得到的所有計畫,<strong>不受學年度篩選限制</strong>,
-          所以可以直接找出往年的舊計畫。
-        </p>
-      </div>
-
-      <label class="field search-field">
-        <span class="sr-only">搜尋關鍵字</span>
-        <input id="search-q" type="search" autocomplete="off"
-               placeholder="例:勞保勞退、戶外教育、缺兩張發票">
-      </label>
       <p class="muted small" id="search-count"></p>
       <div id="search-list" class="plan-list"></div>
     </section>
@@ -400,6 +400,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=16"></script>
+<script type="module" src="assets/app.js?v=17"></script>
 </body>
 </html>

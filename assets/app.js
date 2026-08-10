@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=16";
+} from "./config.js?v=17";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -614,10 +614,13 @@ function settlementText(plan) {
 
 /* ---------------- 應用狀態 ---------------- */
 
-/** 篩選條件的預設值。初始化和「重設」按鈕共用同一份,以後加欄位不會漏改 */
+/**
+ * 篩選條件的預設值。初始化和「重設」按鈕共用同一份,以後加欄位不會漏改。
+ * 學年度預設是「全部」—— 這些條件現在只服務「搜尋」分頁,
+ * 而會用搜尋多半就是不知道那件事在哪一年;本學年度的看板是「總覽」的事。
+ */
 const defaultFilters = () => ({
-  year: String(currentAcademicYear()),
-  dept: "", owner: "", stage: "", unit: "", status: "", stuck: false, trash: false
+  year: "", dept: "", owner: "", stage: "", unit: "", status: "", stuck: false, trash: false
 });
 
 const state = {
@@ -1023,35 +1026,39 @@ let searchTimer;
 $("#search-q").addEventListener("input", (e) => {
   state.query = e.target.value;
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(renderSearch, 200);
+  searchTimer = setTimeout(() => {
+    renderSearch();
+    announce($("#search-count").textContent);
+  }, 200);
 });
 $("#f-sort").addEventListener("change", (e) => {
   state.sort = SORTS.some((s) => s.id === e.target.value) ? e.target.value : "due";
-  renderMine();
-  renderSearch();
   afterFilterChange();
 });
 
-// 篩選或排序改過之後:重畫、記住這次的選擇,
-// 並把結果講給螢幕閱讀器聽(看不到清單長度的人才知道篩出幾件)
+// 篩選或排序改過之後:重畫搜尋結果、記住這次的選擇,
+// 並把件數講給螢幕閱讀器聽(看不到清單長度的人才知道篩出幾件)
 function afterFilterChange() {
-  renderDashboard();
+  renderSearch();
   saveView();
-  announce(`${applyFilters(state.plans).length} 個計畫`);
+  announce($("#search-count").textContent);
 }
 
-// 點統計磚等同於切換狀態篩選;再點一次取消
+// 點統計磚 = 「這幾件是哪些?」→ 切到搜尋分頁,條件直接套好。
+// 篩選條件都搬到搜尋之後,磚就是總覽通往搜尋的捷徑。
 $("#stat-row").addEventListener("click", (e) => {
   const tile = e.target.closest("[data-stat]");
   if (!tile) return;
   const key = tile.dataset.stat;
-  if (key === "stuck") {
-    // 卡關是獨立的篩選條件,不屬於計畫狀態
-    state.filters.stuck = !state.filters.stuck;
-  } else {
-    state.filters.status = state.filters.status === key ? "" : key;
-    $("#f-status").value = state.filters.status;
-  }
+
+  // 從總覽點過去,看到的範圍要和磚上的數字一致(本學年度、沒有其他條件)
+  state.filters = { ...defaultFilters(), year: String(currentAcademicYear()) };
+  if (key === "stuck") state.filters.stuck = true;   // 卡關是獨立條件,不屬於計畫狀態
+  else state.filters.status = key;
+  state.query = "";
+  $("#search-q").value = "";
+  syncFilterFields();
+  setTab("search");
   afterFilterChange();
 });
 
@@ -1073,8 +1080,7 @@ function syncFilterBox() {
   if (wide) box.open = true;
   else if (!box.dataset.touched) box.open = false;
 
-  const active = Object.entries(state.filters)
-    .filter(([k, v]) => v && !(k === "year" && v === String(currentAcademicYear()))).length;
+  const active = Object.entries(state.filters).filter(([, v]) => v).length;
   $("#filter-count").textContent = active ? `已套用 ${active} 項` : "";
 }
 $("#filter-box").addEventListener("toggle", (e) => {
@@ -1382,15 +1388,15 @@ function planCard(plan, { editable }) {
     ? `<span class="next-chip">
          <span class="next-label"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.text)}</b></span>
          ${editable ? `
-           <button class="btn btn-sm next-done" data-act="step-done" data-id="${esc(plan.id)}"
-                   title="把「${esc(nxt.titles.join("、"))}」標記為已完成,並自動接下一步">
-             <span aria-hidden="true">✓</span>完成
-           </button>
            <select class="next-loc bundle-loc" data-plan="${esc(plan.id)}"
                    data-steps="${nxt.idxs.join(",")}"
                    aria-label="這批文件目前在哪" title="這批文件目前在哪">
              ${unitOptionsHtml({ selected: nextLoc, withDefault: true })}
-           </select>` : ""}
+           </select>
+           <button class="btn btn-sm next-done" data-act="step-done" data-id="${esc(plan.id)}"
+                   title="把「${esc(nxt.titles.join("、"))}」標記為已完成,並自動接下一步">
+             <span aria-hidden="true">✓</span>完成
+           </button>` : ""}
        </span>`
     : ((plan.steps || []).length ? `<span class="next-chip done"><span aria-hidden="true">✓</span>全部步驟已完成</span>` : "");
 
@@ -1491,10 +1497,11 @@ function renderRecurBanner() {
 $("#recur-banner").addEventListener("click", (e) => {
   if (!e.target.closest("#recur-focus")) return;
   // 定期計畫都已結案,切到「已完成」並清掉其他條件才看得到
-  state.filters = { ...state.filters, year: "", status: "done", stuck: false, trash: false };
-  $("#f-year").value = "";
-  $("#f-status").value = "done";
-  $("#f-trash").checked = false;
+  state.filters = { ...defaultFilters(), year: "", status: "done" };
+  state.query = "";
+  $("#search-q").value = "";
+  syncFilterFields();
+  setTab("search");
   afterFilterChange();
 });
 
@@ -1529,12 +1536,19 @@ function renderWeekBox() {
       : "");
 }
 
+/** 總覽只看本學年度 —— 要換學年度或加條件請用「搜尋」分頁 */
+const boardPlans = () =>
+  livePlans().filter((p) => String(p.year) === String(currentAcademicYear()));
+
 function renderDashboard() {
-  const plans = sortPlans(applyFilters(state.plans), state.sort);
-  syncFilterBox();
+  // 總覽固定照急迫程度排,而且沒有篩選 UI:一打開就是「現在該看的東西」。
+  // 要挑條件、換學年度、看垃圾桶,都到「搜尋」分頁。
+  const plans = sortPlans(boardPlans(), "due");
   renderRecurBanner();
   renderWeekBox();
   renderStats(plans);
+  $("#dashboard-scope").textContent =
+    `${currentAcademicYear()} 學年度・${plans.length} 件(其他學年度或更細的條件請用「搜尋」)`;
 
   if (state.loadError) {
     $("#dashboard-list").innerHTML =
@@ -1543,11 +1557,11 @@ function renderDashboard() {
   }
   $("#dashboard-list").innerHTML = plans.length
     ? plans.map((p) => planCard(p, { editable: canEdit(p) })).join("")
-    : `<div class="empty">目前沒有符合篩選條件的計畫。</div>`;
+    : `<div class="empty">這個學年度還沒有計畫。</div>`;
 }
 
 function renderMine() {
-  const mine = sortPlans(livePlans().filter(isMine), state.sort);
+  const mine = sortPlans(livePlans().filter(isMine), "due");
   $("#mine-list").innerHTML = mine.length
     ? mine.map((p) => planCard(p, { editable: true })).join("")
     : `<div class="empty">你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。</div>`;
@@ -1558,22 +1572,17 @@ function renderMine() {
  * 會用搜尋多半就是「不知道那件事在哪一年」,再被學年度擋住就沒意義了。
  */
 function renderSearch() {
+  syncFilterBox();
   const kw = state.query.trim().toLowerCase();
-  const box = $("#search-count");
+  const filtered = applyFilters(state.plans);
+  const hits = sortPlans(kw ? filtered.filter((p) => searchText(p).includes(kw)) : filtered, state.sort);
 
-  if (!kw) {
-    box.textContent = "";
-    $("#search-list").innerHTML =
-      `<div class="empty">輸入關鍵字開始搜尋。可以找計畫名稱、備註、承辦人,也可以找步驟名稱與步驟備註。</div>`;
-    return;
-  }
-
-  const hits = sortPlans(livePlans().filter((p) => searchText(p).includes(kw)), state.sort);
-  box.textContent = `找到 ${hits.length} 件`;
+  $("#search-count").textContent = `找到 ${hits.length} 件`;
   $("#search-list").innerHTML = hits.length
     ? hits.map((p) => planCard(p, { editable: canEdit(p) })).join("")
-    : `<div class="empty">找不到符合「${esc(state.query.trim())}」的計畫。</div>`;
-  announce(`找到 ${hits.length} 件`);
+    : `<div class="empty">${kw
+        ? `找不到符合「${esc(state.query.trim())}」的計畫。`
+        : "沒有符合這些條件的計畫。"}</div>`;
 }
 
 /** 卡片同時出現在三個分頁,任何一處有變動就三個一起重畫 */
@@ -1859,16 +1868,21 @@ document.addEventListener("click", async (e) => {
   const act = btn.dataset.act;
   if (act === "goto") {
     // 本週待辦點下去:把那張卡片展開並捲過去。
-    // 如果它正被篩選條件擋著,先把條件清掉,不然按了會像沒反應。
-    if (!applyFilters(state.plans).some((p) => p.id === plan.id)) {
+    // 待辦會列出所有學年度,總覽只放本學年度 —— 不在總覽上的就改用搜尋分頁帶過去,
+    // 不然按了會像沒反應。
+    const onBoard = boardPlans().some((p) => p.id === plan.id);
+    if (!onBoard) {
       state.filters = { ...defaultFilters(), year: String(plan.year ?? "") };
+      state.query = "";
+      $("#search-q").value = "";
       syncFilterFields();
-      toast("已清掉篩選條件,才看得到這個計畫");
+      setTab("search");
+      toast(`${plan.year} 學年度的計畫,已用搜尋帶你過去`);
     }
     state.expanded.add(plan.id);
     saveView();
     renderPlanLists();
-    const card = $(`#dashboard-list .plan[data-id="${plan.id}"]`);
+    const card = $(`#${onBoard ? "dashboard" : "search"}-list .plan[data-id="${plan.id}"]`);
     card?.scrollIntoView({ behavior: "smooth", block: "start" });
     card?.classList.add("flash");
   } else if (act === "toggle") {
@@ -2364,12 +2378,12 @@ formPlan.addEventListener("submit", async (e) => {
         await updateDoc(doc(db, "plans", src.id), { recurring: "" }).catch(() => {});
       }
     }
-    // 存到別的學年度時把篩選切過去,不然剛建好的計畫會被目前的學年篩選擋住
-    if (state.filters.year && state.filters.year !== String(payload.year)) {
-      state.filters.year = String(payload.year);
-      $("#f-year").value = state.filters.year;
-      saveView();
-      renderDashboard();
+    // 總覽只顯示本學年度,存到別的學年度會看不到 —— 講清楚,免得以為沒存成功
+    if (String(payload.year) !== String(currentAcademicYear())) {
+      state.filters = { ...defaultFilters(), year: String(payload.year) };
+      syncFilterFields();
+      renderSearch();
+      toast(`已存到 ${payload.year} 學年度。總覽只顯示 ${currentAcademicYear()} 學年度,已在「搜尋」幫你列出來`);
     }
     dlgPlan.close();
   } catch (e2) {

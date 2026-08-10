@@ -347,6 +347,15 @@ textarea { resize: vertical; }
 }
 .next-chip b { font-weight: 600; }
 .next-chip.done { background: var(--good-track); color: var(--text-primary); }
+/* 直接在卡片上把這一批打勾完成,不用展開明細 */
+.next-chip .next-done {
+  margin: -3px -8px -3px 2px; padding: 3px 10px;
+  border-radius: 999px; font-size: .82rem;
+  background: rgba(255, 255, 255, .18); color: #fff;
+  border-color: rgba(255, 255, 255, .45);
+}
+.next-chip .next-done:hover { background: rgba(255, 255, 255, .3); border-color: #fff; }
+.next-chip .next-done:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
 .away-tag {
   display: inline-flex; align-items: center; gap: 4px;

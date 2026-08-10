@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=14";
+} from "./config.js?v=15";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -45,6 +45,8 @@ function toast(msg, kind = "info") {
   el.textContent = msg;
   el.addEventListener("click", () => el.remove());
   box.appendChild(el);
+  // 連續操作(例如一直按「完成」)不要讓提示條疊成一片牆
+  while (box.children.length > 3) box.firstElementChild.remove();
   // 錯誤要看得夠久;成功訊息瞄一眼就好
   setTimeout(() => el.remove(), kind === "error" ? 9000 : 4500);
 }
@@ -506,20 +508,29 @@ function nextStep(plan) {
 }
 
 /**
- * 卡片上「下一步」要顯示的字。
- * 下一步如果是一起送的一批公文,就連同份數一起講,和展開後的批次一致。
+ * 卡片上「下一步」指的那一批公文:第一個還沒完成的步驟,
+ * 連同和它一起送的其他文件(標為本次不適用的不算在內)。
+ * 回傳 { idxs, titles, text };全部做完就回 null。
  */
-function nextStepText(plan) {
-  const nxt = nextStep(plan);
-  if (!nxt) return "";
+function nextBundle(plan) {
   const steps = plan.steps || [];
+  const nxt = nextStep(plan);
+  if (!nxt) return null;
+
   const i = steps.indexOf(nxt);
-  const bundle = (bundlesOf(steps).find((idxs) => idxs.includes(i)) || [])
-    .filter((k) => steps[k].status !== "na");
-  return bundle.length > 1
-    ? `${steps[bundle[0]].title} 等 ${bundle.length} 份`
-    : nxt.title;
+  const idxs = (bundlesOf(steps).find((b) => b.includes(i)) || [i])
+    .filter((k) => steps[k] && steps[k].status !== "na");
+  const titles = idxs.map((k) => steps[k].title);
+  return {
+    idxs,
+    titles,
+    // 兩份就兩個都寫出來,再多就只寫第一份加份數,免得卡片被一長串名稱撐開
+    text: titles.length > 2 ? `${titles[0]} 等 ${titles.length} 份` : titles.join("、")
+  };
 }
+
+/** 卡片上「下一步」要顯示的字 */
+const nextStepText = (plan) => nextBundle(plan)?.text || "";
 
 /** 這個步驟距離期限還有幾天;null = 沒期限、已完成或本次不適用 */
 function daysLeft(step, today = todayStr(), plan = {}) {
@@ -1361,9 +1372,18 @@ function planCard(plan, { editable }) {
   const legacy = plan.location && plan.location !== DEFAULT_UNIT && !out.length
     ? `<span class="loc-chip">📄 公文在:<b>${esc(plan.location)}</b></span>` : "";
   // 下一步:一眼看出現在該做什麼,不用展開明細
-  const nxt = nextStepText(plan);
+  // 下一步不只是提示,也可以直接在這裡打勾完成 —— 不必每次都展開明細。
+  // 一起送的整批會同時完成,完成後下一批自動接上,卡片上的字跟著換。
+  const nxt = nextBundle(plan);
   const nextChip = nxt
-    ? `<span class="next-chip"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt)}</b></span>`
+    ? `<span class="next-chip">
+         <span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.text)}</b>
+         ${editable ? `
+           <button class="btn btn-sm next-done" data-act="step-done" data-id="${esc(plan.id)}"
+                   title="把「${esc(nxt.titles.join("、"))}」標記為已完成,並自動接下一步">
+             <span aria-hidden="true">✓</span>完成
+           </button>` : ""}
+       </span>`
     : ((plan.steps || []).length ? `<span class="next-chip done"><span aria-hidden="true">✓</span>全部步驟已完成</span>` : "");
 
   // 紙本跑完掃描上傳雲端後貼的連結
@@ -1836,6 +1856,19 @@ document.addEventListener("click", async (e) => {
       await deleteDoc(doc(db, "plans", plan.id));
     } catch (err) {
       toast(`永久刪除失敗:${err.message}`, "error");
+    }
+  } else if (act === "step-done") {
+    // 卡片上直接把「下一步」那一批打勾完成,不用展開明細
+    const nxt = nextBundle(plan);
+    if (!nxt) return;
+    const today = todayStr();
+    const steps = (plan.steps || []).map((s, i) =>
+      nxt.idxs.includes(i) ? { ...s, status: "done", doneAt: today } : s);
+    advanceAfter(steps, nxt.idxs[0], today);
+
+    if (await patchPlan(plan.id, { steps }, "更新")) {
+      const after = nextBundle({ ...plan, steps });
+      toast(`已完成:${nxt.text}${after ? `,接著是「${after.text}」` : "・這個計畫全部完成了"}`, "good");
     }
   } else if (act === "flow-del") {
     // 紀錄是位置一改就自動寫的,選錯單位時要刪得掉

@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=15";
+} from "./config.js?v=16";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -617,7 +617,7 @@ function settlementText(plan) {
 /** 篩選條件的預設值。初始化和「重設」按鈕共用同一份,以後加欄位不會漏改 */
 const defaultFilters = () => ({
   year: String(currentAcademicYear()),
-  dept: "", owner: "", stage: "", unit: "", status: "", q: "", stuck: false, trash: false
+  dept: "", owner: "", stage: "", unit: "", status: "", stuck: false, trash: false
 });
 
 const state = {
@@ -632,6 +632,7 @@ const state = {
   cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
   filters: defaultFilters(),
   sort: "due",       // 排序是檢視方式,不算篩選條件,所以不放在 filters 裡
+  query: "",         // 搜尋分頁的關鍵字。搜尋不受學年度等條件限制,所以也不放在 filters
   unsubscribe: []
 };
 
@@ -838,8 +839,7 @@ function subscribeData() {
     state.plans = [...byId.values()].filter(canSee);   // 第二道防線,見 canSee 的說明
     fillYearSelects();     // 學年度選單要包含資料裡實際出現過的年度
     fillOwnerFilter();
-    renderDashboard();
-    renderMine();
+    renderPlanLists();
     if (isAdmin()) renderMembers();   // 成員表的「名下計畫」件數會跟著計畫變動
     if (state.tab === "calendar") renderCalendar();
   };
@@ -885,8 +885,12 @@ function subscribeData() {
 function setTab(tab) {
   state.tab = tab;
   $$(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
-  for (const p of ["dashboard", "calendar", "mine", "members"]) show($(`#panel-${p}`), p === tab);
+  for (const p of ["dashboard", "search", "calendar", "mine", "members"]) {
+    show($(`#panel-${p}`), p === tab);
+  }
   if (tab === "calendar") renderCalendar();
+  // 切到搜尋就直接可以打字,不用再點一次輸入框
+  if (tab === "search") $("#search-q").focus();
 }
 $$(".tab").forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
 
@@ -1005,24 +1009,26 @@ $("#member-role").addEventListener("change", (e) => {
 
 const FILTER_FIELDS = {
   year: "#f-year", dept: "#f-dept", owner: "#f-owner",
-  stage: "#f-stage", unit: "#f-unit", status: "#f-status", q: "#f-q"
+  stage: "#f-stage", unit: "#f-unit", status: "#f-status"
 };
-let searchTimer;
 for (const [key, sel] of Object.entries(FILTER_FIELDS)) {
   $(sel).addEventListener("input", (e) => {
     state.filters[key] = e.target.value;
-    if (key === "q") {
-      // 搜尋是逐字輸入,稍等一下再重繪,免得每按一鍵就重建整份清單
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(afterFilterChange, 200);
-    } else {
-      afterFilterChange();
-    }
+    afterFilterChange();
   });
 }
+
+// 搜尋是逐字輸入,稍等一下再重繪,免得每按一鍵就重建整份清單
+let searchTimer;
+$("#search-q").addEventListener("input", (e) => {
+  state.query = e.target.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(renderSearch, 200);
+});
 $("#f-sort").addEventListener("change", (e) => {
   state.sort = SORTS.some((s) => s.id === e.target.value) ? e.target.value : "due";
   renderMine();
+  renderSearch();
   afterFilterChange();
 });
 
@@ -1078,8 +1084,7 @@ $("#filter-box").addEventListener("toggle", (e) => {
 window.addEventListener("resize", syncFilterBox);
 
 function applyFilters(plans) {
-  const { year, dept, owner, stage, unit, status, q, stuck, trash } = state.filters;
-  const kw = q.trim().toLowerCase();
+  const { year, dept, owner, stage, unit, status, stuck, trash } = state.filters;
   return plans.filter((p) => {
     // 垃圾桶是獨立檢視:平常不顯示已刪除的,打開時只顯示已刪除的
     if (trash !== !!p.deletedAt) return false;
@@ -1090,7 +1095,6 @@ function applyFilters(plans) {
     if (unit && !unitsOf(p).includes(unit)) return false;
     if (stage && currentStage(p)?.id !== stage) return false;
     if (status && statusOf(p) !== status) return false;
-    if (kw && !searchText(p).includes(kw)) return false;
     return true;
   });
 }
@@ -1372,14 +1376,21 @@ function planCard(plan, { editable }) {
   // 下一步不只是提示,也可以直接在這裡打勾完成 —— 不必每次都展開明細。
   // 一起送的整批會同時完成,完成後下一批自動接上,卡片上的字跟著換。
   const nxt = nextBundle(plan);
+  // 這一批文件現在在哪(整批共用一個位置,取第一個有填的)
+  const nextLoc = nxt ? ((plan.steps || []).find((s, i) => nxt.idxs.includes(i) && s.location)?.location || "") : "";
   const nextChip = nxt
     ? `<span class="next-chip">
-         <span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.text)}</b>
+         <span class="next-label"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.text)}</b></span>
          ${editable ? `
            <button class="btn btn-sm next-done" data-act="step-done" data-id="${esc(plan.id)}"
                    title="把「${esc(nxt.titles.join("、"))}」標記為已完成,並自動接下一步">
              <span aria-hidden="true">✓</span>完成
-           </button>` : ""}
+           </button>
+           <select class="next-loc bundle-loc" data-plan="${esc(plan.id)}"
+                   data-steps="${nxt.idxs.join(",")}"
+                   aria-label="這批文件目前在哪" title="這批文件目前在哪">
+             ${unitOptionsHtml({ selected: nextLoc, withDefault: true })}
+           </select>` : ""}
        </span>`
     : ((plan.steps || []).length ? `<span class="next-chip done"><span aria-hidden="true">✓</span>全部步驟已完成</span>` : "");
 
@@ -1480,10 +1491,9 @@ function renderRecurBanner() {
 $("#recur-banner").addEventListener("click", (e) => {
   if (!e.target.closest("#recur-focus")) return;
   // 定期計畫都已結案,切到「已完成」並清掉其他條件才看得到
-  state.filters = { ...state.filters, year: "", status: "done", q: "", stuck: false, trash: false };
+  state.filters = { ...state.filters, year: "", status: "done", stuck: false, trash: false };
   $("#f-year").value = "";
   $("#f-status").value = "done";
-  $("#f-q").value = "";
   $("#f-trash").checked = false;
   afterFilterChange();
 });
@@ -1541,6 +1551,36 @@ function renderMine() {
   $("#mine-list").innerHTML = mine.length
     ? mine.map((p) => planCard(p, { editable: true })).join("")
     : `<div class="empty">你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。</div>`;
+}
+
+/**
+ * 搜尋分頁。刻意不套用總覽的篩選條件 ——
+ * 會用搜尋多半就是「不知道那件事在哪一年」,再被學年度擋住就沒意義了。
+ */
+function renderSearch() {
+  const kw = state.query.trim().toLowerCase();
+  const box = $("#search-count");
+
+  if (!kw) {
+    box.textContent = "";
+    $("#search-list").innerHTML =
+      `<div class="empty">輸入關鍵字開始搜尋。可以找計畫名稱、備註、承辦人,也可以找步驟名稱與步驟備註。</div>`;
+    return;
+  }
+
+  const hits = sortPlans(livePlans().filter((p) => searchText(p).includes(kw)), state.sort);
+  box.textContent = `找到 ${hits.length} 件`;
+  $("#search-list").innerHTML = hits.length
+    ? hits.map((p) => planCard(p, { editable: canEdit(p) })).join("")
+    : `<div class="empty">找不到符合「${esc(state.query.trim())}」的計畫。</div>`;
+  announce(`找到 ${hits.length} 件`);
+}
+
+/** 卡片同時出現在三個分頁,任何一處有變動就三個一起重畫 */
+function renderPlanLists() {
+  renderDashboard();
+  renderMine();
+  renderSearch();
 }
 
 /* ---------------- 行事曆 ---------------- */
@@ -1827,16 +1867,14 @@ document.addEventListener("click", async (e) => {
     }
     state.expanded.add(plan.id);
     saveView();
-    renderDashboard();
-    renderMine();
+    renderPlanLists();
     const card = $(`#dashboard-list .plan[data-id="${plan.id}"]`);
     card?.scrollIntoView({ behavior: "smooth", block: "start" });
     card?.classList.add("flash");
   } else if (act === "toggle") {
     state.expanded.has(plan.id) ? state.expanded.delete(plan.id) : state.expanded.add(plan.id);
     saveView();
-    renderDashboard();
-    renderMine();
+    renderPlanLists();
   } else if (act === "edit") {
     openPlanDialog(plan);
   } else if (act === "copy") {

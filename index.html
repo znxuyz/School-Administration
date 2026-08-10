@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=15">
+<link rel="stylesheet" href="assets/style.css?v=16">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -64,6 +64,7 @@
       </div>
       <nav class="tabs" role="tablist">
         <button class="tab" role="tab" data-tab="dashboard">總覽</button>
+        <button class="tab" role="tab" data-tab="search">搜尋</button>
         <button class="tab" role="tab" data-tab="calendar">行事曆</button>
         <button class="tab" role="tab" data-tab="mine">我的工作</button>
         <button class="tab admin-only" role="tab" data-tab="members" hidden>成員管理</button>
@@ -128,10 +129,6 @@
             <option value="title">計畫名稱</option>
           </select>
         </label>
-        <label class="field field-grow">
-          <span>搜尋</span>
-          <input id="f-q" type="search" placeholder="計畫名稱關鍵字" autocomplete="off">
-        </label>
         <label class="trash-toggle">
           <input type="checkbox" id="f-trash"><span>顯示垃圾桶</span>
         </label>
@@ -149,6 +146,26 @@
       </section>
 
       <div id="dashboard-list" class="plan-list"></div>
+    </section>
+
+    <!-- 搜尋 -->
+    <section id="panel-search" class="panel" hidden>
+      <div class="panel-head">
+        <h2>搜尋</h2>
+        <p class="muted">
+          比對計畫名稱、備註、承辦人,以及<strong>每個步驟的名稱與備註</strong>。
+          範圍是你看得到的所有計畫,<strong>不受學年度篩選限制</strong>,
+          所以可以直接找出往年的舊計畫。
+        </p>
+      </div>
+
+      <label class="field search-field">
+        <span class="sr-only">搜尋關鍵字</span>
+        <input id="search-q" type="search" autocomplete="off"
+               placeholder="例:勞保勞退、戶外教育、缺兩張發票">
+      </label>
+      <p class="muted small" id="search-count"></p>
+      <div id="search-list" class="plan-list"></div>
     </section>
 
     <!-- 行事曆 -->
@@ -383,6 +400,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=15"></script>
+<script type="module" src="assets/app.js?v=16"></script>
 </body>
 </html>

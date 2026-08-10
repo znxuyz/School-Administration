@@ -340,11 +340,13 @@ textarea { resize: vertical; }
 .trash-toggle input { width: auto; margin: 0; accent-color: var(--accent); }
 
 .next-chip {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
   background: var(--accent); color: #fff;
   border-radius: 999px; padding: 5px 13px;
   font-size: .86rem;
 }
+.next-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.next-label b { overflow-wrap: anywhere; }
 .next-chip b { font-weight: 600; }
 .next-chip.done { background: var(--good-track); color: var(--text-primary); }
 /* 直接在卡片上把這一批打勾完成,不用展開明細 */
@@ -356,6 +358,14 @@ textarea { resize: vertical; }
 }
 .next-chip .next-done:hover { background: rgba(255, 255, 255, .3); border-color: #fff; }
 .next-chip .next-done:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+/* 這批文件現在在哪 —— 和「完成」放在一起,常用的兩件事都不必展開明細 */
+.next-chip .next-loc {
+  width: auto; max-width: 160px;
+  margin: -3px -8px -3px 0; padding: 3px 8px;
+  border-radius: 999px; font-size: .82rem;
+  border-color: rgba(255, 255, 255, .45);
+}
+.next-chip .next-loc:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
 .away-tag {
   display: inline-flex; align-items: center; gap: 4px;
@@ -789,3 +799,16 @@ textarea { resize: vertical; }
 /* 範本選單與刪除鈕排成一列 */
 .tpl-row { display: flex; gap: 8px; align-items: center; }
 .tpl-row select { flex: 1; min-width: 0; }
+
+/* ---------- 搜尋分頁 ---------- */
+.search-field { max-width: 640px; }
+.search-field input { padding: 11px 14px; font-size: 1rem; }
+#search-count { margin: 10px 0 14px; }
+
+/* 手機:標籤佔一整行,「完成」和位置選單換到第二行,才不會被擠成直排 */
+@media (max-width: 720px) {
+  .next-chip { display: flex; width: 100%; border-radius: var(--radius); padding: 8px 12px; }
+  .next-label { flex: 1 1 100%; }
+  .next-chip .next-done { margin: 0; }
+  .next-chip .next-loc { margin: 0; flex: 1; max-width: none; }
+}

@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=13";
+} from "./config.js?v=14";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -32,6 +32,28 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
 ));
 
 const show = (el, visible) => { el.hidden = !visible; };
+
+/**
+ * 畫面下方的提示條。取代 alert:手機上按 alert 要多點一次才回得去,
+ * 而且會擋住剛剛在改的那一列。錯誤留久一點,點一下可以提早關掉。
+ */
+function toast(msg, kind = "info") {
+  const box = $("#toasts");
+  if (!box) return;
+  const el = document.createElement("div");
+  el.className = `toast toast-${kind}`;
+  el.textContent = msg;
+  el.addEventListener("click", () => el.remove());
+  box.appendChild(el);
+  // 錯誤要看得夠久;成功訊息瞄一眼就好
+  setTimeout(() => el.remove(), kind === "error" ? 9000 : 4500);
+}
+
+/** 只給螢幕閱讀器聽的播報(畫面上看不到) */
+function announce(msg) {
+  const el = $("#live");
+  if (el) el.textContent = msg;
+}
 
 /** 今天的 YYYY-MM-DD(本地時區),用來和 <input type="date"> 的值直接字串比較 */
 function todayStr(d = new Date()) {
@@ -421,6 +443,55 @@ function mergeFlow(flow, entry) {
   return rows;
 }
 
+/** 這個計畫最早是哪一天開始逾期的(結算期限與各步驟期限取最早的) */
+function overdueSince(plan, today = todayStr()) {
+  return [settlementDueOf(plan), ...activeSteps(plan)
+    .filter((s) => s.status !== "done")
+    .map((s) => effectiveDue(s, plan))]
+    .filter((d) => d && d < today)
+    .sort()[0] || "";
+}
+
+// 本週待辦的四種事由,由急到緩。統計磚只給數字,這裡要講出是「哪幾件」。
+const TODO_TYPES = {
+  overdue: { label: "已逾期", icon: "⚠", cls: "critical" },
+  stuck:   { label: "公文卡關", icon: "⚠", cls: "serious" },
+  settle:  { label: "要送結算", icon: "✓", cls: "warning" },
+  end:     { label: "執行結束", icon: "■", cls: "info" }
+};
+const TODO_ORDER = Object.keys(TODO_TYPES);
+
+/**
+ * 這一週該注意的事情。
+ * 只看還沒結案的計畫,一個計畫只列最急的那一件事,免得同一個標題出現四次。
+ */
+function weekTodos(plans, today = todayStr(), days = 7) {
+  const until = addDays(today, days);
+  const rows = [];
+
+  plans.forEach((plan) => {
+    const st = statusOf(plan);
+    if (st === "done") return;
+    const settle = settlementDueOf(plan);
+    const end = deadlineOf(plan);
+
+    let type = "";
+    let date = "";
+    // 逾期的判定和統計磚一致(步驟自己的期限也算),否則磚上寫 1 件、
+    // 待辦卻沒列出來,看的人會不知道該信哪一個
+    if (st === "overdue") { type = "overdue"; date = overdueSince(plan, today); }
+    else if (hasStuckDoc(plan, today)) { type = "stuck"; date = ""; }
+    else if (settle && settle <= until) { type = "settle"; date = settle; }
+    else if (end && end >= today && end <= until) { type = "end"; date = end; }
+    if (type) rows.push({ plan, type, date });
+  });
+
+  // 先照急迫程度分組,同一組再照日期
+  return rows.sort((a, b) =>
+    TODO_ORDER.indexOf(a.type) - TODO_ORDER.indexOf(b.type) ||
+    String(a.date).localeCompare(String(b.date)));
+}
+
 /** 搜尋比對的範圍:計畫本身、承辦人,以及每個步驟的名稱與備註 */
 function searchText(plan) {
   return [
@@ -546,6 +617,7 @@ const state = {
   member: null,      // allowlist 中的成員資料
   plans: [],
   members: [],
+  templates: [],    // 管理員存下來的自訂步驟範本(全校共用)
   loadError: "",     // 讀取失敗時顯示在總覽上,不要讓老師只看到空白
   tab: "dashboard",
   expanded: new Set(),          // 展開步驟的計畫 id
@@ -560,6 +632,47 @@ const state = {
  * 主任看同處室的計畫時,才看得出最後是承辦人自己改的還是管理員代改的。
  */
 const stamp = () => ({ updatedAt: serverTimestamp(), updatedByName: state.member?.name || "" });
+
+/* ---------------- 記住上次看到哪裡 ---------------- */
+
+// 篩選條件、排序、展開了哪幾張卡片,存在這台裝置上。
+// 老師常常是「改到一半被叫走,回來重新整理」,每次都回到預設很煩。
+// 同一台電腦可能不只一位老師用,所以用 Email 分開存。
+const viewKey = () => `admin-tracker:view:${myEmail() || "guest"}`;
+
+function saveView() {
+  try {
+    localStorage.setItem(viewKey(), JSON.stringify({
+      // 垃圾桶是臨時檢視,不記住 —— 免得下次打開只看到已刪除的計畫,以為資料不見了
+      filters: { ...state.filters, trash: false },
+      sort: state.sort,
+      expanded: [...state.expanded]
+    }));
+  } catch { /* 無痕模式或空間滿了都不影響主要功能 */ }
+}
+
+function loadView() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(viewKey()) || "null");
+    if (!saved) return;
+    // 只收目前認得的欄位,舊版本存的東西不會污染 state
+    const f = saved.filters || {};
+    const keep = defaultFilters();
+    for (const k of Object.keys(keep)) {
+      if (k !== "trash" && typeof f[k] === typeof keep[k]) keep[k] = f[k];
+    }
+    state.filters = keep;
+    if (SORTS.some((x) => x.id === saved.sort)) state.sort = saved.sort;
+    if (Array.isArray(saved.expanded)) state.expanded = new Set(saved.expanded.slice(0, 200));
+  } catch { /* 壞掉的內容直接忽略,用預設值 */ }
+}
+
+/** 把 state 裡的篩選條件寫回畫面上的欄位 */
+function syncFilterFields() {
+  for (const [key, sel] of Object.entries(FILTER_FIELDS)) $(sel).value = state.filters[key];
+  $("#f-sort").value = state.sort;
+  $("#f-trash").checked = state.filters.trash;
+}
 
 /** 舊資料的 teacher 一律視為組長 */
 const roleOf = (m) => {
@@ -677,6 +790,8 @@ onAuthStateChanged(auth, async (user) => {
     `(${ROLE_LABEL[roleOf(state.member)]})`;
   $$(".admin-only").forEach((el) => { el.hidden = !isAdmin(); });
 
+  loadView();            // 上次的篩選、排序、展開狀態(這台裝置、這個帳號)
+  syncFilterFields();
   applyScopeLabels();
   showView("app");
   subscribeData();
@@ -736,6 +851,16 @@ function subscribeData() {
     }));
   });
 
+  // 自訂範本是全校共用的,每位老師都要讀得到
+  state.unsubscribe.push(
+    onSnapshot(collection(db, "templates"), (snap) => {
+      state.templates = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), "zh-Hant"));
+      fillTemplateSelect();
+    }, (e) => console.error("讀取範本失敗", e))
+  );
+
   // 成員名單只有管理員的畫面用得到
   if (isAdmin()) {
     state.unsubscribe.push(
@@ -774,6 +899,9 @@ function fillYearSelects() {
   const opts = yearOptions().map((y) => [String(y), `${y} 學年度`]);
   fillSelect($("#f-year"), opts, { placeholder: "全部學年" });
   $("#f-year").value = state.filters.year;
+  // 上次記住的學年度可能已經沒有對應選項了,讓 state 跟著畫面走,
+  // 否則會出現「選單顯示全部學年、清單卻是空的」這種說不通的畫面
+  if ($("#f-year").value !== state.filters.year) state.filters.year = $("#f-year").value;
   fillSelect($('#form-plan select[name="year"]'), opts);
 }
 
@@ -825,8 +953,8 @@ function fillOwnerFilter() {
   // 否則畫面會永遠空白而且看不出原因
   if (state.filters.owner && !owners.some(([email]) => email === state.filters.owner)) {
     state.filters.owner = "";
-    $("#f-owner").value = "";
   }
+  $("#f-owner").value = state.filters.owner;
 }
 
 function buildDatalists() {
@@ -843,7 +971,7 @@ function initSelects() {
   fillUnitSelect($("#f-unit"), { placeholder: "全部" });
 
   fillSelect($('#form-plan select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
-  fillSelect($("#plan-template"), TEMPLATES.map((t) => [t.id, t.label]));
+  fillTemplateSelect();
   fillSelect($('#form-plan select[name="recurring"]'), RECURRENCES.map((r) => [r.id, r.label]));
 
   fillSelect($('#form-member select[name="dept"]'), DEPARTMENTS, { placeholder: "請選擇" });
@@ -878,17 +1006,25 @@ for (const [key, sel] of Object.entries(FILTER_FIELDS)) {
     if (key === "q") {
       // 搜尋是逐字輸入,稍等一下再重繪,免得每按一鍵就重建整份清單
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(renderDashboard, 200);
+      searchTimer = setTimeout(afterFilterChange, 200);
     } else {
-      renderDashboard();
+      afterFilterChange();
     }
   });
 }
 $("#f-sort").addEventListener("change", (e) => {
   state.sort = SORTS.some((s) => s.id === e.target.value) ? e.target.value : "due";
-  renderDashboard();
   renderMine();
+  afterFilterChange();
 });
+
+// 篩選或排序改過之後:重畫、記住這次的選擇,
+// 並把結果講給螢幕閱讀器聽(看不到清單長度的人才知道篩出幾件)
+function afterFilterChange() {
+  renderDashboard();
+  saveView();
+  announce(`${applyFilters(state.plans).length} 個計畫`);
+}
 
 // 點統計磚等同於切換狀態篩選;再點一次取消
 $("#stat-row").addEventListener("click", (e) => {
@@ -902,19 +1038,18 @@ $("#stat-row").addEventListener("click", (e) => {
     state.filters.status = state.filters.status === key ? "" : key;
     $("#f-status").value = state.filters.status;
   }
-  renderDashboard();
+  afterFilterChange();
 });
 
 $("#f-trash").addEventListener("change", (e) => {
   state.filters.trash = e.target.checked;
-  renderDashboard();
+  afterFilterChange();
 });
 
 $("#f-reset").addEventListener("click", () => {
   state.filters = defaultFilters();
-  for (const [key, sel] of Object.entries(FILTER_FIELDS)) $(sel).value = state.filters[key];
-  $("#f-trash").checked = false;
-  renderDashboard();
+  syncFilterFields();
+  afterFilterChange();
 });
 
 /** 桌機一律展開篩選,手機收起來省空間;收起時在標題顯示還有幾個條件生效 */
@@ -1333,13 +1468,45 @@ $("#recur-banner").addEventListener("click", (e) => {
   $("#f-status").value = "done";
   $("#f-q").value = "";
   $("#f-trash").checked = false;
-  renderDashboard();
+  afterFilterChange();
 });
+
+/** 本週待辦:統計磚給的是數字,這裡直接列出是哪幾件,點了就跳到那張卡片 */
+function renderWeekBox() {
+  const box = $("#week-box");
+  // 垃圾桶檢視在看已刪除的東西,不需要待辦
+  const rows = state.filters.trash ? [] : weekTodos(livePlans());
+  show(box, rows.length > 0);
+  if (!rows.length) return;
+
+  const shown = rows.slice(0, 6);
+  const mine = rows.filter((r) => isMine(r.plan)).length;
+  $("#week-sub").textContent =
+    `${rows.length} 件${mine && mine !== rows.length ? `,其中 ${mine} 件是你的` : ""}`;
+
+  $("#week-list").innerHTML = shown.map(({ plan, type, date }) => {
+    const t = TODO_TYPES[type];
+    const who = isMine(plan) ? "" : `<span class="muted small">${esc(plan.ownerName || "")}</span>`;
+    return `
+      <li>
+        <button type="button" class="week-item" data-act="goto" data-id="${esc(plan.id)}">
+          <span class="week-tag week-${t.cls}"><span aria-hidden="true">${t.icon}</span>${t.label}</span>
+          <span class="week-title">${esc(plan.title)}</span>
+          ${date ? `<span class="week-date">${esc(date)}</span>` : ""}
+          ${who}
+        </button>
+      </li>`;
+  }).join("") +
+    (rows.length > shown.length
+      ? `<li class="muted small week-more">還有 ${rows.length - shown.length} 件,往下看完整清單</li>`
+      : "");
+}
 
 function renderDashboard() {
   const plans = sortPlans(applyFilters(state.plans), state.sort);
   syncFilterBox();
   renderRecurBanner();
+  renderWeekBox();
   renderStats(plans);
 
   if (state.loadError) {
@@ -1597,7 +1764,7 @@ formHo.addEventListener("submit", async (e) => {
       ok++;
     }
     dlgHo.close();
-    alert(`已將 ${ok} 個計畫移交給 ${to.name}。`);
+    toast(`已將 ${ok} 個計畫移交給 ${to.name}`, "good");
   } catch (e2) {
     err.textContent = e2.code === "permission-denied"
       ? "移交失敗:資料庫拒絕寫入。請確認 Firestore 安全規則已更新為最新版本。"
@@ -1618,9 +1785,10 @@ formHo.addEventListener("submit", async (e) => {
 async function patchPlan(id, patch, what = "更新") {
   try {
     await updateDoc(doc(db, "plans", id), { ...patch, ...stamp() });
+    announce(`已${what}`);          // 畫面看得到變化,螢幕閱讀器需要一句話
     return true;
   } catch (err) {
-    alert(`${what}失敗:${err.message}`);
+    toast(`${what}失敗:${err.message}`, "error");
     return false;
   }
 }
@@ -1632,8 +1800,24 @@ document.addEventListener("click", async (e) => {
   if (!plan) return;
 
   const act = btn.dataset.act;
-  if (act === "toggle") {
+  if (act === "goto") {
+    // 本週待辦點下去:把那張卡片展開並捲過去。
+    // 如果它正被篩選條件擋著,先把條件清掉,不然按了會像沒反應。
+    if (!applyFilters(state.plans).some((p) => p.id === plan.id)) {
+      state.filters = { ...defaultFilters(), year: String(plan.year ?? "") };
+      syncFilterFields();
+      toast("已清掉篩選條件,才看得到這個計畫");
+    }
+    state.expanded.add(plan.id);
+    saveView();
+    renderDashboard();
+    renderMine();
+    const card = $(`#dashboard-list .plan[data-id="${plan.id}"]`);
+    card?.scrollIntoView({ behavior: "smooth", block: "start" });
+    card?.classList.add("flash");
+  } else if (act === "toggle") {
     state.expanded.has(plan.id) ? state.expanded.delete(plan.id) : state.expanded.add(plan.id);
+    saveView();
     renderDashboard();
     renderMine();
   } else if (act === "edit") {
@@ -1651,7 +1835,7 @@ document.addEventListener("click", async (e) => {
     try {
       await deleteDoc(doc(db, "plans", plan.id));
     } catch (err) {
-      alert(`永久刪除失敗:${err.message}`);
+      toast(`永久刪除失敗:${err.message}`, "error");
     }
   } else if (act === "flow-del") {
     // 紀錄是位置一改就自動寫的,選錯單位時要刪得掉
@@ -1685,7 +1869,7 @@ document.addEventListener("change", async (e) => {
   if (!isLoc) {
     if ((sel.value === "doing" || sel.value === "done") && gateOf(all, idx).locked) {
       sel.value = all[idx]?.status || "todo";
-      alert("前一份公文還沒完成,這個步驟還不能開始。");
+      toast("前一份公文還沒完成,這個步驟還不能開始", "error");
       return;
     }
   }
@@ -1859,19 +2043,103 @@ $("#btn-add-step").addEventListener("click", () => {
   focusStepRow(draftSteps.length - 1);
 });
 
+/* ---------------- 步驟範本 ---------------- */
+
+// 自訂範本的選單值前面加上 saved: 前綴,才不會和內建範本的 id 撞在一起
+const savedTemplateId = (id) => `saved:${id}`;
+
+/** 把內建範本與管理員存下來的自訂範本合成一份選單 */
+function fillTemplateSelect() {
+  const keep = $("#plan-template").value;
+  fillSelect($("#plan-template"), [
+    ...TEMPLATES.map((t) => [t.id, t.label]),
+    ...state.templates.map((t) => [savedTemplateId(t.id), `${t.label}(自訂)`])
+  ]);
+  if ([...$("#plan-template").options].some((o) => o.value === keep)) $("#plan-template").value = keep;
+}
+
+/** 選單的值 → 範本內容。找不到就回 null(例如範本剛被別人刪掉) */
+function findTemplate(id) {
+  const built = TEMPLATES.find((t) => t.id === id);
+  if (built) return built;
+
+  const saved = state.templates.find((t) => savedTemplateId(t.id) === id);
+  if (!saved) return null;
+  const steps = Array.isArray(saved.steps) ? saved.steps : [];
+  return {
+    id: savedTemplateId(saved.id),
+    label: saved.label,
+    desc: `自訂範本・${steps.length} 個步驟${saved.createdBy ? `・由 ${saved.createdBy} 建立` : ""}`,
+    steps
+  };
+}
+
+/** 選到自訂範本時,管理員才看得到刪除鈕 */
+function syncTemplateButtons() {
+  show($("#btn-del-template"), isAdmin() && $("#plan-template").value.startsWith("saved:"));
+}
+
+// 把目前編輯中的步驟存成全校共用的範本。
+// 常見的情境是「這個計畫的步驟拆得剛剛好,以後大家照這個開」,
+// 所以編輯既有計畫時也存得起來,不限於新增。
+$("#btn-save-template").addEventListener("click", async () => {
+  const steps = draftSteps.filter((s) => s.title.trim());
+  if (!steps.length) {
+    toast("目前沒有步驟可以存成範本", "error");
+    return;
+  }
+  const label = (prompt("範本名稱?(全校老師都看得到)", pf("title").value.trim()) || "").trim();
+  if (!label) return;
+
+  try {
+    await addDoc(collection(db, "templates"), {
+      label: label.slice(0, 40),
+      // 只存「流程」本身:名稱、階段、批次。進度與日期是每個計畫自己的事
+      steps: steps.map((s) => ({
+        title: s.title.trim(),
+        stage: stageOf(s),
+        bundleWithPrev: !!s.bundleWithPrev
+      })),
+      createdBy: state.member?.name || "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    toast(`已存成範本「${label}」,全校都可以套用`, "good");
+  } catch (err) {
+    toast(`存範本失敗:${err.message}`, "error");
+  }
+});
+
+$("#btn-del-template").addEventListener("click", async () => {
+  const tpl = findTemplate($("#plan-template").value);
+  const id = $("#plan-template").value.replace(/^saved:/, "");
+  if (!tpl || !id) return;
+  if (!confirm(`要刪掉範本「${tpl.label}」嗎?\n已經用這個範本建立的計畫不受影響。`)) return;
+
+  try {
+    await deleteDoc(doc(db, "templates", id));
+    toast(`已刪除範本「${tpl.label}」`, "good");
+    $("#plan-template").value = TEMPLATES[0].id;
+    syncTemplateButtons();
+  } catch (err) {
+    toast(`刪除範本失敗:${err.message}`, "error");
+  }
+});
+
 function applyTemplate(tpl) {
   // 第一批公文預設就是「進行中」(計畫書與概算表一起送就一起開始),後面全部「未開始」
   draftSteps = startFirstBundle(tpl.steps.map((s) => ({ ...s, note: "", status: "todo" })));
   draftTouched = false;          // 範本原封不動,還不算使用者的心血
   lastTemplateId = tpl.id;
   $("#template-hint").textContent = tpl.desc;
+  syncTemplateButtons();
   renderStepEditor();
 }
 
 // 切換範本。只有在使用者已經動手改過步驟時才需要確認,
 // 否則(例如剛開啟對話框、步驟還是範本原樣)直接換掉。
 $("#plan-template").addEventListener("change", (e) => {
-  const tpl = TEMPLATES.find((t) => t.id === e.target.value);
+  const tpl = findTemplate(e.target.value);
   if (!tpl) return;
 
   if (draftTouched && draftSteps.some((s) => s.title.trim())
@@ -1880,6 +2148,7 @@ $("#plan-template").addEventListener("change", (e) => {
     return;
   }
   applyTemplate(tpl);
+  syncTemplateButtons();
 });
 
 /** 在結束日期下方即時顯示系統推算出來的結算期限 */
@@ -1904,9 +2173,11 @@ function openPlanDialog(plan, { copy = false } = {}) {
   show($("#copy-hint"), isCopy);
   formPlan.reset();
 
-  // 範本只在從頭新增時提供;編輯或複製都已經有步驟來源,顯示出來只會誤觸覆蓋
+  // 範本只在從頭新增時提供;編輯或複製都已經有步驟來源,顯示出來只會誤觸覆蓋。
+  // (「存成範本」不受影響 —— 反過來把現成的步驟存起來給大家用是好事)
   show($("#template-field"), !plan);
   $("#template-hint").textContent = "";
+  show($("#btn-del-template"), false);
 
   // 複製時學年度往後推一年(不超過選單上限),標題裡的學年度也一起換掉
   const newYear = isCopy
@@ -2029,6 +2300,7 @@ formPlan.addEventListener("submit", async (e) => {
     if (state.filters.year && state.filters.year !== String(payload.year)) {
       state.filters.year = String(payload.year);
       $("#f-year").value = state.filters.year;
+      saveView();
       renderDashboard();
     }
     dlgPlan.close();
@@ -2081,7 +2353,7 @@ $("#members-table").addEventListener("click", async (e) => {
     openHandover(m);
   } else {
     if (m.email === myEmail()) {
-      alert("不能移除自己,以免系統失去管理員。");
+      toast("不能移除自己,以免系統失去管理員", "error");
       return;
     }
     const n = plansOwnedBy(m.email).length;
@@ -2090,7 +2362,7 @@ $("#members-table").addEventListener("click", async (e) => {
     try {
       await deleteDoc(doc(db, "allowlist", m.email));
     } catch (err) {
-      alert(`移除失敗:${err.message}`);
+      toast(`移除失敗:${err.message}`, "error");
     }
   }
 });

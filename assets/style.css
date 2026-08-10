@@ -704,3 +704,79 @@ textarea { resize: vertical; }
   .tabs { order: 3; width: 100%; }
   .wrap { padding: 18px 14px 48px; }
 }
+
+/* ---------- 提示條(取代 alert) ---------- */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+.toasts {
+  position: fixed; z-index: 60;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+  width: min(560px, calc(100vw - 24px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto; cursor: pointer;
+  width: 100%; box-sizing: border-box;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  /* 提示條浮在內容上面,陰影要比卡片重一點才看得出層次(深色模式的 --shadow 是 none) */
+  box-shadow: 0 4px 18px rgba(11, 11, 11, .18);
+  padding: 11px 14px; font-size: .9rem; font-weight: 500;
+  animation: toast-in .18s ease-out;
+}
+/* 底色用會跟著主題換的 track,文字沿用 --text-primary(深色模式自動轉白),
+   不要寫死顏色 —— 寫死就會在另一個主題變成黑字配深底 */
+.toast-error { border-left-color: var(--status-critical); background: var(--critical-track); }
+.toast-good  { border-left-color: var(--status-good); background: var(--good-track); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+/* ---------- 本週待辦 ---------- */
+.week-box {
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.week-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.week-head h3 { margin: 0; font-size: .96rem; }
+.week-list { list-style: none; margin: 0; padding: 0; }
+.week-list li { border-top: 1px solid var(--hairline); }
+.week-list li:first-child { border-top: 0; }
+.week-more { padding: 8px 2px 2px; }
+.week-item {
+  display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
+  width: 100%; text-align: left; cursor: pointer;
+  background: none; border: 0; padding: 9px 2px; font: inherit;
+  color: var(--text-primary); border-radius: 6px;
+}
+.week-item:hover { background: var(--accent-wash); }
+.week-title { flex: 1; min-width: 0; font-size: .9rem; }
+.week-date { color: var(--text-secondary); font-size: .82rem; font-variant-numeric: tabular-nums; }
+.week-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  border-radius: 999px; padding: 2px 9px; font-size: .78rem; white-space: nowrap;
+  background: var(--accent-wash); color: var(--text-secondary);
+}
+.week-critical { background: var(--critical-track); color: var(--text-primary); }
+.week-serious  { background: var(--warning-track); color: var(--text-primary); }
+.week-warning  { background: var(--warning-track); color: var(--text-primary); }
+
+/* 從本週待辦跳過去時,讓那張卡片閃一下,不然不知道停在哪 */
+.plan.flash { animation: card-flash 1.4s ease-out; }
+@keyframes card-flash {
+  from { box-shadow: 0 0 0 3px var(--accent); }
+  to { box-shadow: var(--shadow); }
+}
+@media (prefers-reduced-motion: reduce) { .plan.flash { animation: none; } }
+
+/* 範本選單與刪除鈕排成一列 */
+.tpl-row { display: flex; gap: 8px; align-items: center; }
+.tpl-row select { flex: 1; min-width: 0; }

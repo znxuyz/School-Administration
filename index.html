@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=13">
+<link rel="stylesheet" href="assets/style.css?v=14">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -140,6 +140,13 @@
       </details>
 
       <div id="recur-banner" class="recur-banner" hidden></div>
+      <section id="week-box" class="week-box" aria-labelledby="week-title" hidden>
+        <div class="week-head">
+          <h3 id="week-title">本週待辦</h3>
+          <span class="muted small" id="week-sub"></span>
+        </div>
+        <ul id="week-list" class="week-list"></ul>
+      </section>
 
       <div id="dashboard-list" class="plan-list"></div>
     </section>
@@ -196,6 +203,10 @@
   </main>
 </div>
 
+<!-- 操作提示。同時是螢幕閱讀器的播報區(見 aria-live) -->
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<p id="live" class="sr-only" role="status" aria-live="polite"></p>
+
 <!-- 計畫編輯 -->
 <dialog id="dlg-plan" class="dlg">
   <form id="form-plan" method="dialog">
@@ -208,7 +219,12 @@
 
     <label class="field" id="template-field">
       <span>套用範本</span>
-      <select id="plan-template"></select>
+      <span class="tpl-row">
+        <select id="plan-template"></select>
+        <!-- 選到自訂範本、而且是管理員才會出現,所以不掛 admin-only(那個是登入時一次切換的) -->
+        <button type="button" id="btn-del-template" class="btn btn-sm btn-danger" hidden
+                title="刪除這個自訂範本">刪除範本</button>
+      </span>
       <small class="hint" id="template-hint"></small>
     </label>
 
@@ -267,6 +283,8 @@
 
     <div class="steps-head">
       <h4>執行步驟</h4>
+      <button type="button" id="btn-save-template" class="btn btn-sm admin-only" hidden
+              title="把目前這份步驟清單存成全校共用的範本">存成範本</button>
       <button type="button" id="btn-add-step" class="btn btn-sm">＋ 新增步驟</button>
     </div>
     <p class="muted small">
@@ -365,6 +383,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=13"></script>
+<script type="module" src="assets/app.js?v=14"></script>
 </body>
 </html>

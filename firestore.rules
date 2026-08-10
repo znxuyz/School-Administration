@@ -63,6 +63,25 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ---------- 自訂步驟範本 ----------
+    // 全校共用:每位成員都套用得到,但只有管理員能新增或刪除,
+    // 免得範本清單被每個人各自的版本塞滿。
+    match /templates/{tplId} {
+      allow read: if isMember();
+
+      allow create, update: if isAdmin()
+        && request.resource.data.label is string
+        && request.resource.data.label.size() > 0
+        && request.resource.data.label.size() <= 40
+        && request.resource.data.steps is list
+        && request.resource.data.steps.size() <= 100
+        && (!request.resource.data.keys().hasAny(['createdBy'])
+            || (request.resource.data.createdBy is string
+                && request.resource.data.createdBy.size() <= 50));
+
+      allow delete: if isAdmin();
+    }
+
     // ---------- 行政計畫 ----------
     match /plans/{planId} {
 

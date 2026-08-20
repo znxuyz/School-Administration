@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=17";
+} from "./config.js?v=18";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -400,6 +400,30 @@ function monthCells(y, m, today = todayStr()) {
   return cells.slice(0, n);
 }
 
+/**
+ * 結案日期:最後一個步驟完成的那一天。
+ * 計畫本身沒有「結案日」欄位 —— 老師按完最後一步就是結案,
+ * 再叫他填一次日期只是多一道手續。
+ */
+function closedAt(plan) {
+  return (plan.steps || [])
+    .map((s) => s.doneAt || "")
+    .filter(Boolean)
+    .sort()
+    .pop() || "";
+}
+
+/** 已結案的清單照結案日期由新到舊;沒有日期的(舊資料)排最後 */
+function sortByClosed(plans) {
+  return [...plans].sort((a, b) => {
+    const x = closedAt(a), y = closedAt(b);
+    if (x === y) return String(a.title || "").localeCompare(String(b.title || ""), "zh-Hant");
+    if (!x) return 1;
+    if (!y) return -1;
+    return x < y ? 1 : -1;
+  });
+}
+
 // 清單排序方式。預設照結算期限,最急的排前面 ——
 // 若預設照「最近更新」排,老師每改一個步驟那張卡片就會跳到最上面,
 // 清單會在手指下面亂動,很難一件一件往下處理。
@@ -472,7 +496,7 @@ function weekTodos(plans, today = todayStr(), days = 7) {
   const rows = [];
 
   plans.forEach((plan) => {
-    const st = statusOf(plan);
+    const st = statusOf(plan, today);
     if (st === "done") return;
     const settle = settlementDueOf(plan);
     const end = deadlineOf(plan);
@@ -566,14 +590,13 @@ function currentStage(plan) {
   return rows.find((r) => !r.complete) || null;
 }
 
-/** 計畫狀態:已完成 > 逾期 > 待更新 > 進行中 */
-function statusOf(plan) {
+/** 計畫狀態:已完成 > 逾期 > 待更新 > 進行中(today 可指定,方便測試與批次計算) */
+function statusOf(plan, today = todayStr()) {
   const { done, total } = progressOf(plan);
   if (total > 0 && done === total) return "done";
 
   // 整體期限用「結算期限」(執行結束日 + 寬限期),
   // 結案階段沒填期限的步驟也一律對照結算期限。
-  const today = todayStr();
   const deadlines = [settlementDueOf(plan), ...activeSteps(plan)
     .filter((s) => s.status !== "done")
     .map((s) => effectiveDue(s, plan))].filter(Boolean);
@@ -636,6 +659,7 @@ const state = {
   filters: defaultFilters(),
   sort: "due",       // 排序是檢視方式,不算篩選條件,所以不放在 filters 裡
   query: "",         // 搜尋分頁的關鍵字。搜尋不受學年度等條件限制,所以也不放在 filters
+  doneOpen: false,   // 「已結案」摺疊區是不是打開的
   unsubscribe: []
 };
 
@@ -658,6 +682,7 @@ function saveView() {
       // 垃圾桶是臨時檢視,不記住 —— 免得下次打開只看到已刪除的計畫,以為資料不見了
       filters: { ...state.filters, trash: false },
       sort: state.sort,
+      doneOpen: state.doneOpen,
       expanded: [...state.expanded]
     }));
   } catch { /* 無痕模式或空間滿了都不影響主要功能 */ }
@@ -675,6 +700,7 @@ function loadView() {
     }
     state.filters = keep;
     if (SORTS.some((x) => x.id === saved.sort)) state.sort = saved.sort;
+    state.doneOpen = !!saved.doneOpen;
     if (Array.isArray(saved.expanded)) state.expanded = new Set(saved.expanded.slice(0, 200));
   } catch { /* 壞掉的內容直接忽略,用預設值 */ }
 }
@@ -1089,6 +1115,14 @@ $("#filter-box").addEventListener("toggle", (e) => {
 });
 window.addEventListener("resize", syncFilterBox);
 
+// 「已結案」開合狀態記起來,兩個分頁共用同一個設定
+$$(".done-box").forEach((box) => box.addEventListener("toggle", () => {
+  if (state.doneOpen === box.open) return;
+  state.doneOpen = box.open;
+  $$(".done-box").forEach((other) => { other.open = box.open; });
+  saveView();
+}));
+
 function applyFilters(plans) {
   const { year, dept, owner, stage, unit, status, stuck, trash } = state.filters;
   return plans.filter((p) => {
@@ -1439,6 +1473,7 @@ function planCard(plan, { editable }) {
     period,
     settlementText(plan),
     plan.budget ? `核定 ${money(plan.budget)} 元` : "",
+    st === "done" && closedAt(plan) ? `結案 ${closedAt(plan)}` : "",
     // 最後一次更新的人:主任看同處室的計畫時才知道是誰動的
     relativeDays(toDate(plan.updatedAt)) + (plan.updatedByName ? `・${plan.updatedByName}` : "")
   ].filter(Boolean);
@@ -1540,31 +1575,52 @@ function renderWeekBox() {
 const boardPlans = () =>
   livePlans().filter((p) => String(p.year) === String(currentAcademicYear()));
 
+/**
+ * 一份清單畫成卡片,並把「全部步驟都完成」的收進下方的「已結案」摺疊區。
+ * 結案的計畫留在畫面上是為了查閱,不該和還要辦的工作混在一起排隊。
+ */
+function renderBoard(prefix, plans, editableFn, emptyText) {
+  const open = plans.filter((p) => statusOf(p) !== "done");
+  const done = sortByClosed(plans.filter((p) => statusOf(p) === "done"));
+
+  $(`#${prefix}-list`).innerHTML = open.length
+    ? sortPlans(open, "due").map((p) => planCard(p, { editable: editableFn(p) })).join("")
+    : `<div class="empty">${esc(done.length ? "沒有還在進行的計畫,都結案了。" : emptyText)}</div>`;
+
+  const box = $(`#${prefix}-done`);
+  show(box, done.length > 0);
+  if (done.length) {
+    $(`#${prefix}-done-count`).textContent = `${done.length} 件・依結案日期由新到舊`;
+    $(`#${prefix}-done-list`).innerHTML =
+      done.map((p) => planCard(p, { editable: editableFn(p) })).join("");
+    box.open = state.doneOpen;
+  }
+  return { open: open.length, done: done.length };
+}
+
 function renderDashboard() {
   // 總覽固定照急迫程度排,而且沒有篩選 UI:一打開就是「現在該看的東西」。
   // 要挑條件、換學年度、看垃圾桶,都到「搜尋」分頁。
-  const plans = sortPlans(boardPlans(), "due");
+  const plans = boardPlans();
   renderRecurBanner();
   renderWeekBox();
   renderStats(plans);
-  $("#dashboard-scope").textContent =
-    `${currentAcademicYear()} 學年度・${plans.length} 件(其他學年度或更細的條件請用「搜尋」)`;
 
   if (state.loadError) {
     $("#dashboard-list").innerHTML =
       `<div class="status-line status-critical">${esc(state.loadError)}</div>`;
+    show($("#dashboard-done"), false);
     return;
   }
-  $("#dashboard-list").innerHTML = plans.length
-    ? plans.map((p) => planCard(p, { editable: canEdit(p) })).join("")
-    : `<div class="empty">這個學年度還沒有計畫。</div>`;
+  const n = renderBoard("dashboard", plans, canEdit, "這個學年度還沒有計畫。");
+  $("#dashboard-scope").textContent =
+    `${currentAcademicYear()} 學年度・進行中 ${n.open} 件` +
+    `${n.done ? `・已結案 ${n.done} 件` : ""}(其他學年度或更細的條件請用「搜尋」)`;
 }
 
 function renderMine() {
-  const mine = sortPlans(livePlans().filter(isMine), "due");
-  $("#mine-list").innerHTML = mine.length
-    ? mine.map((p) => planCard(p, { editable: true })).join("")
-    : `<div class="empty">你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。</div>`;
+  renderBoard("mine", livePlans().filter(isMine), () => true,
+    "你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。");
 }
 
 /**

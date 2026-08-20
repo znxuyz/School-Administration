@@ -813,3 +813,20 @@ textarea { resize: vertical; }
   .next-chip .next-loc { margin: 0; flex: 1; max-width: none; }
   .next-chip .next-label { margin-bottom: 2px; }
 }
+
+/* ---------- 已結案摺疊區 ---------- */
+.done-box { margin-top: 18px; }
+.done-box > summary {
+  cursor: pointer; list-style: none;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: .9rem; font-weight: 600;
+}
+.done-box > summary::-webkit-details-marker { display: none; }
+.done-box > summary::before { content: "✓ "; color: var(--status-good); }
+.done-box > summary::after { content: "▾"; float: right; color: var(--text-secondary); }
+.done-box[open] > summary::after { content: "▴"; }
+.done-box > summary:hover { border-color: var(--text-muted); }
+.done-count { margin-left: 8px; font-weight: 400; color: var(--text-secondary); }
+.done-box .plan-list { margin-top: 12px; }

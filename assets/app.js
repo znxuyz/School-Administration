@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=18";
+} from "./config.js?v=19";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -659,7 +659,6 @@ const state = {
   filters: defaultFilters(),
   sort: "due",       // 排序是檢視方式,不算篩選條件,所以不放在 filters 裡
   query: "",         // 搜尋分頁的關鍵字。搜尋不受學年度等條件限制,所以也不放在 filters
-  doneOpen: false,   // 「已結案」摺疊區是不是打開的
   unsubscribe: []
 };
 
@@ -682,7 +681,6 @@ function saveView() {
       // 垃圾桶是臨時檢視,不記住 —— 免得下次打開只看到已刪除的計畫,以為資料不見了
       filters: { ...state.filters, trash: false },
       sort: state.sort,
-      doneOpen: state.doneOpen,
       expanded: [...state.expanded]
     }));
   } catch { /* 無痕模式或空間滿了都不影響主要功能 */ }
@@ -700,7 +698,6 @@ function loadView() {
     }
     state.filters = keep;
     if (SORTS.some((x) => x.id === saved.sort)) state.sort = saved.sort;
-    state.doneOpen = !!saved.doneOpen;
     if (Array.isArray(saved.expanded)) state.expanded = new Set(saved.expanded.slice(0, 200));
   } catch { /* 壞掉的內容直接忽略,用預設值 */ }
 }
@@ -914,7 +911,7 @@ function subscribeData() {
 function setTab(tab) {
   state.tab = tab;
   $$(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
-  for (const p of ["dashboard", "search", "calendar", "mine", "members"]) {
+  for (const p of ["dashboard", "search", "calendar", "closed", "mine", "members"]) {
     show($(`#panel-${p}`), p === tab);
   }
   if (tab === "calendar") renderCalendar();
@@ -1077,7 +1074,10 @@ $("#stat-row").addEventListener("click", (e) => {
   if (!tile) return;
   const key = tile.dataset.stat;
 
-  // 從總覽點過去,看到的範圍要和磚上的數字一致(本學年度、沒有其他條件)
+  // 「已完成」有自己的分頁,直接帶過去
+  if (key === "done") { setTab("closed"); return; }
+
+  // 其他磚是切到搜尋分頁,範圍要和磚上的數字一致(本學年度、沒有其他條件)
   state.filters = { ...defaultFilters(), year: String(currentAcademicYear()) };
   if (key === "stuck") state.filters.stuck = true;   // 卡關是獨立條件,不屬於計畫狀態
   else state.filters.status = key;
@@ -1115,13 +1115,6 @@ $("#filter-box").addEventListener("toggle", (e) => {
 });
 window.addEventListener("resize", syncFilterBox);
 
-// 「已結案」開合狀態記起來,兩個分頁共用同一個設定
-$$(".done-box").forEach((box) => box.addEventListener("toggle", () => {
-  if (state.doneOpen === box.open) return;
-  state.doneOpen = box.open;
-  $$(".done-box").forEach((other) => { other.open = box.open; });
-  saveView();
-}));
 
 function applyFilters(plans) {
   const { year, dept, owner, stage, unit, status, stuck, trash } = state.filters;
@@ -1576,26 +1569,31 @@ const boardPlans = () =>
   livePlans().filter((p) => String(p.year) === String(currentAcademicYear()));
 
 /**
- * 一份清單畫成卡片,並把「全部步驟都完成」的收進下方的「已結案」摺疊區。
- * 結案的計畫留在畫面上是為了查閱,不該和還要辦的工作混在一起排隊。
+ * 只畫「還要辦」的清單。結案的計畫會自己跑到「已結案」分頁,
+ * 不和還要辦的工作混在一起排隊。
  */
 function renderBoard(prefix, plans, editableFn, emptyText) {
-  const open = plans.filter((p) => statusOf(p) !== "done");
-  const done = sortByClosed(plans.filter((p) => statusOf(p) === "done"));
+  const open = sortPlans(plans.filter((p) => statusOf(p) !== "done"), "due");
+  const done = plans.length - open.length;
 
   $(`#${prefix}-list`).innerHTML = open.length
-    ? sortPlans(open, "due").map((p) => planCard(p, { editable: editableFn(p) })).join("")
-    : `<div class="empty">${esc(done.length ? "沒有還在進行的計畫,都結案了。" : emptyText)}</div>`;
+    ? open.map((p) => planCard(p, { editable: editableFn(p) })).join("")
+    : `<div class="empty">${esc(done ? "沒有還在進行的計畫,都結案了。" : emptyText)}</div>`;
+  return { open: open.length, done };
+}
 
-  const box = $(`#${prefix}-done`);
-  show(box, done.length > 0);
-  if (done.length) {
-    $(`#${prefix}-done-count`).textContent = `${done.length} 件・依結案日期由新到舊`;
-    $(`#${prefix}-done-list`).innerHTML =
-      done.map((p) => planCard(p, { editable: editableFn(p) })).join("");
-    box.open = state.doneOpen;
-  }
-  return { open: open.length, done: done.length };
+/**
+ * 已結案分頁:看得到的計畫裡全部步驟都完成的,依結案日期由新到舊。
+ * 不限學年度 —— 這裡就是查閱用的檔案櫃。
+ */
+function renderClosed() {
+  const rows = sortByClosed(livePlans().filter((p) => statusOf(p) === "done"));
+  $("#closed-count").textContent = rows.length
+    ? `${rows.length} 件・依結案日期由新到舊`
+    : "";
+  $("#closed-list").innerHTML = rows.length
+    ? rows.map((p) => planCard(p, { editable: canEdit(p) })).join("")
+    : `<div class="empty">還沒有結案的計畫。把一個計畫的步驟全部完成,它就會自己收到這裡。</div>`;
 }
 
 function renderDashboard() {
@@ -1614,8 +1612,8 @@ function renderDashboard() {
   }
   const n = renderBoard("dashboard", plans, canEdit, "這個學年度還沒有計畫。");
   $("#dashboard-scope").textContent =
-    `${currentAcademicYear()} 學年度・進行中 ${n.open} 件` +
-    `${n.done ? `・已結案 ${n.done} 件` : ""}(其他學年度或更細的條件請用「搜尋」)`;
+    `${currentAcademicYear()} 學年度・還在辦 ${n.open} 件` +
+    `${n.done ? `・已結案 ${n.done} 件(在「已結案」分頁)` : ""}`;
 }
 
 function renderMine() {
@@ -1641,10 +1639,11 @@ function renderSearch() {
         : "沒有符合這些條件的計畫。"}</div>`;
 }
 
-/** 卡片同時出現在三個分頁,任何一處有變動就三個一起重畫 */
+/** 同一張卡片會出現在好幾個分頁,任何一處有變動就一起重畫 */
 function renderPlanLists() {
   renderDashboard();
   renderMine();
+  renderClosed();
   renderSearch();
 }
 

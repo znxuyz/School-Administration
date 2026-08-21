@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=18">
+<link rel="stylesheet" href="assets/style.css?v=19">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -66,6 +66,7 @@
         <button class="tab" role="tab" data-tab="dashboard">總覽</button>
         <button class="tab" role="tab" data-tab="search">搜尋</button>
         <button class="tab" role="tab" data-tab="calendar">行事曆</button>
+        <button class="tab" role="tab" data-tab="closed">已結案</button>
         <button class="tab" role="tab" data-tab="mine">我的工作</button>
         <button class="tab admin-only" role="tab" data-tab="members" hidden>成員管理</button>
       </nav>
@@ -99,12 +100,6 @@
       </section>
 
       <div id="dashboard-list" class="plan-list"></div>
-
-      <!-- 全部步驟完成的計畫自動收到這裡,依結案日期由新到舊 -->
-      <details class="done-box" id="dashboard-done" hidden>
-        <summary><span>已結案</span><span class="done-count" id="dashboard-done-count"></span></summary>
-        <div id="dashboard-done-list" class="plan-list"></div>
-      </details>
     </section>
 
     <!-- 搜尋 -->
@@ -194,6 +189,20 @@
       <div id="cal-detail" class="cal-detail"></div>
     </section>
 
+    <!-- 已結案 -->
+    <section id="panel-closed" class="panel" hidden>
+      <div class="panel-head">
+        <h2>已結案</h2>
+        <p class="muted">
+          全部步驟都完成的計畫會自動收到這裡,<strong>依結案日期由新到舊</strong>。
+          結案日期就是最後一個步驟完成的那一天,不用另外填。
+          這裡<strong>不限學年度</strong>,往年辦過的都留著查閱。
+        </p>
+      </div>
+      <p class="muted small" id="closed-count"></p>
+      <div id="closed-list" class="plan-list"></div>
+    </section>
+
     <!-- 我的工作 -->
     <section id="panel-mine" class="panel" hidden>
       <div class="panel-head">
@@ -202,11 +211,6 @@
         <button id="btn-new-plan" class="btn btn-primary">＋ 新增計畫</button>
       </div>
       <div id="mine-list" class="plan-list"></div>
-
-      <details class="done-box" id="mine-done" hidden>
-        <summary><span>已結案</span><span class="done-count" id="mine-done-count"></span></summary>
-        <div id="mine-done-list" class="plan-list"></div>
-      </details>
     </section>
 
     <!-- 成員管理 -->
@@ -411,6 +415,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=18"></script>
+<script type="module" src="assets/app.js?v=19"></script>
 </body>
 </html>

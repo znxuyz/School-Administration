@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=20";
+} from "./config.js?v=21";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -653,7 +653,7 @@ const state = {
   members: [],
   templates: [],    // 管理員存下來的自訂步驟範本(全校共用)
   loadError: "",     // 讀取失敗時顯示在總覽上,不要讓老師只看到空白
-  tab: "dashboard",
+  tab: "mine",       // 登入後先看自己承辦的工作
   expanded: new Set(),          // 展開步驟的計畫 id
   cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
   filters: defaultFilters(),
@@ -1068,17 +1068,20 @@ function afterFilterChange() {
 }
 
 // 點統計磚 = 「這幾件是哪些?」→ 切到搜尋分頁,條件直接套好。
-// 篩選條件都搬到搜尋之後,磚就是總覽通往搜尋的捷徑。
-$("#stat-row").addEventListener("click", (e) => {
-  const tile = e.target.closest("[data-stat]");
+// 篩選條件都搬到搜尋之後,磚就是通往搜尋的捷徑。兩排(處室總覽、承辦工作)共用這段。
+document.addEventListener("click", (e) => {
+  const tile = e.target.closest(".stat-row [data-stat]");
   if (!tile) return;
   const key = tile.dataset.stat;
+  const mine = tile.closest("#mine-stat-row");   // 承辦工作那排只看自己的
 
   // 「已完成」有自己的分頁,直接帶過去
   if (key === "done") { setTab("closed"); return; }
 
-  // 其他磚是切到搜尋分頁,範圍要和磚上的數字一致(本學年度、沒有其他條件)
-  state.filters = { ...defaultFilters(), year: String(currentAcademicYear()) };
+  // 範圍要和磚上的數字一致:總覽是本學年度全部人,承辦工作是自己的(不限學年度)
+  state.filters = mine
+    ? { ...defaultFilters(), owner: myEmail() }
+    : { ...defaultFilters(), year: String(currentAcademicYear()) };
   if (key === "stuck") state.filters.stuck = true;   // 卡關是獨立條件,不屬於計畫狀態
   else state.filters.status = key;
   state.query = "";
@@ -1134,11 +1137,13 @@ function applyFilters(plans) {
 
 /* ---------------- 畫面繪製 ---------------- */
 
-function renderStats(plans) {
+function renderStats(plans, target = "#stat-row") {
   const counts = { total: plans.length, active: 0, overdue: 0, stale: 0, done: 0 };
   plans.forEach((p) => { counts[statusOf(p)]++; });
 
   const stuck = plans.filter((p) => hasStuckDoc(p)).length;
+  // 選取狀態只有處室總覽那排要顯示 —— 承辦工作那排點了就跳走,不會停在選取中
+  const pressed = target === "#stat-row";
 
   const tiles = [
     { key: "", label: "計畫總數", value: counts.total, color: "var(--text-muted)" },
@@ -1150,9 +1155,9 @@ function renderStats(plans) {
   ];
 
   // 統計磚同時是篩選捷徑:點「逾期」就只看逾期的計畫
-  $("#stat-row").innerHTML = tiles.map((t) => `
+  $(target).innerHTML = tiles.map((t) => `
     <button type="button" class="stat" data-stat="${esc(t.key)}"
-            aria-pressed="${t.separate ? state.filters.stuck : state.filters.status === t.key}">
+            aria-pressed="${pressed && (t.separate ? state.filters.stuck : state.filters.status === t.key)}">
       <span class="stat-label">
         <span class="dot" style="background:${t.color}"></span>${esc(t.label)}
       </span>
@@ -1617,8 +1622,13 @@ function renderDashboard() {
 }
 
 function renderMine() {
-  renderBoard("mine", livePlans().filter(isMine), () => true,
+  const mine = livePlans().filter(isMine);
+  renderStats(mine, "#mine-stat-row");
+  const n = renderBoard("mine", mine, () => true,
     "你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。");
+  $("#mine-scope").textContent = mine.length
+    ? `還在辦 ${n.open} 件${n.done ? `・已結案 ${n.done} 件(在「已結案」分頁)` : ""}`
+    : "";
 }
 
 /**

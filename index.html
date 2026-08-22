@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=20">
+<link rel="stylesheet" href="assets/style.css?v=21">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -63,7 +63,7 @@
         <span class="brand-text">行政工作進度追蹤</span>
       </div>
       <nav class="tabs" role="tablist">
-        <button class="tab" role="tab" data-tab="mine">我的工作</button>
+        <button class="tab" role="tab" data-tab="mine">承辦工作</button>
         <button class="tab" role="tab" data-tab="calendar">行事曆</button>
         <button class="tab" role="tab" data-tab="closed">已結案</button>
         <button class="tab" role="tab" data-tab="dashboard">處室總覽</button>
@@ -80,8 +80,56 @@
 
   <main class="wrap">
 
-    <!-- 總覽 -->
-    <section id="panel-dashboard" class="panel">
+    <!-- 承辦工作(登入後的預設畫面) -->
+    <section id="panel-mine" class="panel">
+      <div class="panel-head">
+        <h2>承辦工作</h2>
+        <p class="muted">你自己承辦的計畫。在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度與公文流向。</p>
+        <button id="btn-new-plan" class="btn btn-primary">＋ 新增計畫</button>
+      </div>
+
+      <div class="stat-row" id="mine-stat-row"></div>
+      <p class="muted small board-scope" id="mine-scope"></p>
+
+      <div id="mine-list" class="plan-list"></div>
+    </section>
+
+    <!-- 行事曆 -->
+    <section id="panel-calendar" class="panel" hidden>
+      <div class="panel-head">
+        <h2>行事曆</h2>
+        <p class="muted">用月曆看哪個月要開始、結束、送結算,一眼掌握該月的行政節奏。</p>
+      </div>
+
+      <div class="cal-bar">
+        <button id="cal-prev" class="btn btn-sm" aria-label="上一個月">‹</button>
+        <strong id="cal-title" class="cal-title"></strong>
+        <button id="cal-next" class="btn btn-sm" aria-label="下一個月">›</button>
+        <button id="cal-today" class="btn btn-sm btn-ghost">回到本月</button>
+        <span class="cal-summary" id="cal-summary"></span>
+      </div>
+
+      <div class="cal-legend" id="cal-legend"></div>
+      <div class="cal-grid" id="cal-grid" role="group" aria-label="月曆"></div>
+      <div id="cal-detail" class="cal-detail"></div>
+    </section>
+
+    <!-- 已結案 -->
+    <section id="panel-closed" class="panel" hidden>
+      <div class="panel-head">
+        <h2>已結案</h2>
+        <p class="muted">
+          全部步驟都完成的計畫會自動收到這裡,<strong>依結案日期由新到舊</strong>。
+          結案日期就是最後一個步驟完成的那一天,不用另外填。
+          這裡<strong>不限學年度</strong>,往年辦過的都留著查閱。
+        </p>
+      </div>
+      <p class="muted small" id="closed-count"></p>
+      <div id="closed-list" class="plan-list"></div>
+    </section>
+
+    <!-- 處室總覽 -->
+    <section id="panel-dashboard" class="panel" hidden>
       <div class="panel-head">
         <h2 id="dashboard-title">行政工作總覽</h2>
         <p class="muted" id="dashboard-desc">載入中…</p>
@@ -167,50 +215,6 @@
       </details>
       <p class="muted small" id="search-count"></p>
       <div id="search-list" class="plan-list"></div>
-    </section>
-
-    <!-- 行事曆 -->
-    <section id="panel-calendar" class="panel" hidden>
-      <div class="panel-head">
-        <h2>行事曆</h2>
-        <p class="muted">用月曆看哪個月要開始、結束、送結算,一眼掌握該月的行政節奏。</p>
-      </div>
-
-      <div class="cal-bar">
-        <button id="cal-prev" class="btn btn-sm" aria-label="上一個月">‹</button>
-        <strong id="cal-title" class="cal-title"></strong>
-        <button id="cal-next" class="btn btn-sm" aria-label="下一個月">›</button>
-        <button id="cal-today" class="btn btn-sm btn-ghost">回到本月</button>
-        <span class="cal-summary" id="cal-summary"></span>
-      </div>
-
-      <div class="cal-legend" id="cal-legend"></div>
-      <div class="cal-grid" id="cal-grid" role="group" aria-label="月曆"></div>
-      <div id="cal-detail" class="cal-detail"></div>
-    </section>
-
-    <!-- 已結案 -->
-    <section id="panel-closed" class="panel" hidden>
-      <div class="panel-head">
-        <h2>已結案</h2>
-        <p class="muted">
-          全部步驟都完成的計畫會自動收到這裡,<strong>依結案日期由新到舊</strong>。
-          結案日期就是最後一個步驟完成的那一天,不用另外填。
-          這裡<strong>不限學年度</strong>,往年辦過的都留著查閱。
-        </p>
-      </div>
-      <p class="muted small" id="closed-count"></p>
-      <div id="closed-list" class="plan-list"></div>
-    </section>
-
-    <!-- 我的工作 -->
-    <section id="panel-mine" class="panel" hidden>
-      <div class="panel-head">
-        <h2>我的行政工作</h2>
-        <p class="muted">在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度與公文流向。</p>
-        <button id="btn-new-plan" class="btn btn-primary">＋ 新增計畫</button>
-      </div>
-      <div id="mine-list" class="plan-list"></div>
     </section>
 
     <!-- 成員管理 -->
@@ -415,6 +419,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=20"></script>
+<script type="module" src="assets/app.js?v=21"></script>
 </body>
 </html>

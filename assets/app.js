@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=19";
+} from "./config.js?v=20";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -2438,7 +2438,7 @@ formPlan.addEventListener("submit", async (e) => {
       state.filters = { ...defaultFilters(), year: String(payload.year) };
       syncFilterFields();
       renderSearch();
-      toast(`已存到 ${payload.year} 學年度。總覽只顯示 ${currentAcademicYear()} 學年度,已在「搜尋」幫你列出來`);
+      toast(`已存到 ${payload.year} 學年度。「處室總覽」只顯示 ${currentAcademicYear()} 學年度,已在「搜尋」幫你列出來`);
     }
     dlgPlan.close();
   } catch (e2) {

@@ -121,11 +121,13 @@ h4 { font-size: .95rem; }
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .brand-mark { font-size: 1.15rem; }
-.tabs { display: flex; gap: 4px; margin-right: auto; }
+.tabs { display: flex; gap: 4px; margin-right: auto; flex-wrap: wrap; }
 .tab {
   border: 0; background: none; cursor: pointer;
   padding: 7px 14px; border-radius: 8px;
   font: inherit; color: var(--text-secondary);
+  /* 分頁名稱不能被擠成直排,寧可換到第二行 */
+  white-space: nowrap;
 }
 .tab:hover { background: var(--accent-wash); color: var(--text-primary); }
 .tab[aria-selected="true"] {
@@ -720,7 +722,9 @@ textarea { resize: vertical; }
   .filters { flex-direction: column; align-items: stretch; }
   .filters .field { min-width: 0; }
   .topbar-inner { gap: 10px; }
-  .tabs { order: 3; width: 100%; }
+  /* 六個分頁在窄螢幕排不下,讓它換行,不要壓縮成直書 */
+  .tabs { order: 3; width: 100%; gap: 4px 2px; }
+  .tab { padding: 7px 10px; font-size: .95rem; }
   .wrap { padding: 18px 14px 48px; }
 }
 

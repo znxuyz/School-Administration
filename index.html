@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=19">
+<link rel="stylesheet" href="assets/style.css?v=20">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -63,11 +63,11 @@
         <span class="brand-text">行政工作進度追蹤</span>
       </div>
       <nav class="tabs" role="tablist">
-        <button class="tab" role="tab" data-tab="dashboard">總覽</button>
-        <button class="tab" role="tab" data-tab="search">搜尋</button>
+        <button class="tab" role="tab" data-tab="mine">我的工作</button>
         <button class="tab" role="tab" data-tab="calendar">行事曆</button>
         <button class="tab" role="tab" data-tab="closed">已結案</button>
-        <button class="tab" role="tab" data-tab="mine">我的工作</button>
+        <button class="tab" role="tab" data-tab="dashboard">處室總覽</button>
+        <button class="tab" role="tab" data-tab="search">搜尋</button>
         <button class="tab admin-only" role="tab" data-tab="members" hidden>成員管理</button>
       </nav>
       <div class="user-box">
@@ -108,7 +108,7 @@
         <h2>搜尋</h2>
         <p class="muted">
           關鍵字會比對計畫名稱、備註、承辦人,以及<strong>每個步驟的名稱與備註</strong>。
-          也可以只用下方的條件找,不一定要打字。這裡<strong>不受總覽的學年度限制</strong>,
+          也可以只用下方的條件找,不一定要打字。這裡<strong>不受「處室總覽」的學年度限制</strong>,
           往年的舊計畫一樣找得到。
         </p>
       </div>
@@ -415,6 +415,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=19"></script>
+<script type="module" src="assets/app.js?v=20"></script>
 </body>
 </html>

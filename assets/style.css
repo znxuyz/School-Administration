@@ -74,7 +74,11 @@ h2 { font-size: 1.2rem; }
 h3 { font-size: 1.1rem; }
 h4 { font-size: .95rem; }
 
-.muted { color: var(--text-secondary); margin: 0 0 .8em; }
+/* .muted 只管顏色。段落之間的間距是段落自己的事 ——
+   當初把 margin 寫在 .muted 上,結果 <span class="muted"> 夾在一行文字裡時,
+   多出來的下緣會把字往上頂,看起來像沒對齊同一行。 */
+.muted { color: var(--text-secondary); }
+p.muted { margin: 0 0 .8em; }
 .small { font-size: .85rem; }
 .req { color: var(--status-critical); }
 

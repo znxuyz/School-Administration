@@ -69,7 +69,8 @@ service cloud.firestore {
     match /notes/{noteId} {
 
       // 可見範圍:all 全校、dept 同處室、self 只有自己。
-      // 舊記事沒有這個欄位,一律當成全校(當初就是這樣),所以用 get 帶預設值。
+      // 舊記事沒有這個欄位,一律當成全校 —— 那是它當初被寫下來時的意思,所以用 get 帶預設值。
+      // (新記事在程式端預設 self,是另一回事,不要把這裡的 'all' 改成 'self'。)
       function noteVisible(d) {
         return d.get('scope', 'all') == 'all'
           || d.ownerEmail == emailKey()

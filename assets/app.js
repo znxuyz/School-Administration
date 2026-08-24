@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=24";
+} from "./config.js?v=25";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -371,15 +371,21 @@ const EVENT_TYPES = {
 // 行事曆上的記事:和計畫無關的提醒(訪視、預演、開學日…)
 const NOTE_COLOR = "#7c5cd6";
 
-// 記事的可見範圍。預設全校,寫的時候可以縮小。
+// 記事的可見範圍,由窄到寬排。
+// 預設「只有自己」—— 寫錯範圍的代價不對等:不小心寫窄了頂多自己再改開,
+// 不小心寫寬了整校都看過了,收不回來。要給別人看是一個明確的動作。
 const NOTE_SCOPES = [
-  { id: "all",  label: "全校可看" },
+  { id: "self", label: "只有自己" },
   { id: "dept", label: "同處室" },
-  { id: "self", label: "只有自己" }
+  { id: "all",  label: "全校可看" }
 ];
 const NOTE_SCOPE_LABEL = Object.fromEntries(NOTE_SCOPES.map((x) => [x.id, x.label]));
+const NOTE_SCOPE_DEFAULT = "self";
 
-/** 舊記事沒有 scope 欄位,一律視為全校可看(當初就是這樣) */
+/**
+ * 舊記事沒有 scope 欄位,一律視為全校可看 —— 當初寫的時候就是全校共看,
+ * 這是還原它原本的意思,和新記事的預設值(只有自己)是兩回事。
+ */
 const noteScopeOf = (n) => (NOTE_SCOPES.some((x) => x.id === n.scope) ? n.scope : "all");
 
 /** 某一天的記事,新增順序在前的先列 */
@@ -1819,14 +1825,18 @@ function renderCalDetail(byDate) {
   // 記事是和計畫無關的提醒,誰寫的就由誰(或管理員)改
   const noteRows = notes.map((n) => {
     const scope = noteScopeOf(n);
-    // 全校可看是預設,不用標;縮小範圍的才標出來
-    const tag = scope === "dept" ? `限 ${n.dept || "同處室"}` : scope === "self" ? "只有自己" : "";
+    // 預設是「只有自己」,所以不用標;別人看得到的才標出來,一眼就知道哪些會被看到。
+    // 加範圍功能之前寫的記事沒存 scope,現在只有自己看得到,單獨標一個提醒。
+    const tag = !n.scope ? { text: "舊記事", hint: "這是加可見範圍之前寫的,現在只有你看得到;按 ✎ 重存一次並選範圍就會恢復" }
+      : scope === "dept" ? { text: `限 ${n.dept || "同處室"}`, hint: "同處室的人看得到" }
+        : scope === "all" ? { text: "全校可看", hint: "名單內所有人都看得到" }
+          : null;
     return `
     <li>
       <span class="cal-dot" style="background:${NOTE_COLOR}"></span>
       <span class="cal-list-type">記事</span>
       <span class="cal-list-title">${esc(n.text)}</span>
-      ${tag ? `<span class="note-scope">${esc(tag)}</span>` : ""}
+      ${tag ? `<span class="note-scope" title="${esc(tag.hint)}">${esc(tag.text)}</span>` : ""}
       <span class="muted">${esc(n.ownerName || "")}</span>
       ${canEditNote(n) ? `
         <span class="note-tools">
@@ -1852,7 +1862,8 @@ function renderCalDetail(byDate) {
              value="${esc(editing ? editing.text : "")}" aria-label="記事內容">
       <select id="note-scope" aria-label="誰看得到這則記事">
         ${NOTE_SCOPES.map((x) => `<option value="${x.id}"${
-          (editing ? noteScopeOf(editing) : "all") === x.id ? " selected" : ""}>${x.label}</option>`).join("")}
+          (editing ? noteScopeOf(editing) : NOTE_SCOPE_DEFAULT) === x.id
+            ? " selected" : ""}>${x.label}</option>`).join("")}
       </select>
       <button type="submit" class="btn btn-sm btn-primary">${editing ? "儲存" : "新增記事"}</button>
       ${editing ? `<button type="button" class="btn btn-sm btn-ghost" id="note-cancel">取消</button>` : ""}
@@ -1928,7 +1939,8 @@ $("#cal-detail").addEventListener("submit", async (e) => {
   if (!text || !date) return;
 
   const picked = $("#note-scope").value;
-  const scope = NOTE_SCOPES.some((x) => x.id === picked) ? picked : "all";
+  // 選單被改壞或送出怪值時,退回最保守的範圍,不要不小心公開出去
+  const scope = NOTE_SCOPES.some((x) => x.id === picked) ? picked : NOTE_SCOPE_DEFAULT;
   const editing = state.notes.find((n) => n.id === state.editingNote);
   try {
     if (editing) {

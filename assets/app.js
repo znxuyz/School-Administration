@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=25";
+} from "./config.js?v=26";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1728,6 +1728,10 @@ function renderPlanLists() {
 
 const DOW = ["日", "一", "二", "三", "四", "五", "六"];
 
+// 一格月曆放得下幾行。格子高度固定(style.css 的 --cal-cell-h),
+// 兩邊要一起改,不然多出來的那行會被切掉。
+const CAL_SLOTS = 3;
+
 function renderCalendar() {
   const { y, m } = state.cal;
   const today = todayStr();
@@ -1771,7 +1775,14 @@ function renderCalendar() {
         total ? "has-events" : ""
       ].filter(Boolean).join(" ");
 
-      const chips = evs.slice(0, 3).map((ev) => {
+      // 格子高度是固定的(CSS 的 --cal-cell-h),一格放得下三行。
+      // 項目超過三個時,最後一行要留給「還有 N 項」,不然它會被切掉看不到。
+      const room = total > CAL_SLOTS ? CAL_SLOTS - 1 : CAL_SLOTS;
+      const shownEvs = evs.slice(0, room);
+      const shownNotes = notes.slice(0, room - shownEvs.length);
+      const shown = shownEvs.length + shownNotes.length;
+
+      const chips = shownEvs.map((ev) => {
         const t = EVENT_TYPES[ev.type];
         return `<span class="cal-chip${ev.done ? " is-done" : ""}" style="--chip:${t.color}"
                       title="${esc(ev.plan.title)}・${esc(t.label)}">
@@ -1779,13 +1790,11 @@ function renderCalendar() {
                   <span class="cal-chip-text">${esc(ev.plan.title)}</span>
                 </span>`;
       }).join("") +
-        notes.slice(0, 3 - Math.min(evs.length, 3)).map((n) => `
+        shownNotes.map((n) => `
           <span class="cal-chip cal-note" style="--chip:${NOTE_COLOR}" title="${esc(n.text)}">
             <span class="cal-dot" style="background:${NOTE_COLOR}"></span>
             <span class="cal-chip-text">${esc(n.text)}</span>
           </span>`).join("");
-
-      const shown = Math.min(3, total);
       return `
         <button type="button" class="${cls}" data-date="${c.ymd}"
                 aria-label="${c.ymd} 有 ${total} 個項目">
@@ -1869,7 +1878,7 @@ function renderCalDetail(byDate) {
       ${editing ? `<button type="button" class="btn btn-sm btn-ghost" id="note-cancel">取消</button>` : ""}
     </form>
     <p class="muted small note-hint">
-      記事預設全校看得到,可以改成只有同處室或只有自己;不論哪一種,都只有寫的人和管理員能修改或刪除。
+      記事預設只有自己看得到,要給別人看再改成同處室或全校;不論哪一種,都只有寫的人和管理員能修改或刪除。
     </p>`;
 }
 

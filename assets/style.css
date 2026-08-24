@@ -525,6 +525,9 @@ textarea { resize: vertical; }
 .cal-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
 .cal-grid {
+  /* 每一格都一樣高,月曆才不會因為某天項目多就整排變高。
+     放得下的行數寫在 app.js 的 CAL_SLOTS,兩邊要一起改。 */
+  --cal-cell-h: 96px;
   display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
   background: var(--hairline);
   border: 1px solid var(--border); border-radius: var(--radius);
@@ -537,10 +540,12 @@ textarea { resize: vertical; }
 .cal-dow.weekend { color: var(--text-muted); }
 
 .cal-cell {
-  min-height: 92px; padding: 5px 6px;
+  height: var(--cal-cell-h); padding: 5px 6px;
   display: flex; flex-direction: column; align-items: stretch; gap: 3px;
   background: var(--surface-1); border: 0; cursor: pointer;
   font: inherit; text-align: left; color: var(--text-primary);
+  /* 長標題不能把格子撐寬,超出的部分交給下面的 … 處理 */
+  min-width: 0; overflow: hidden;
 }
 .cal-cell:hover { background: var(--accent-wash); }
 .cal-cell.outside { opacity: .38; }
@@ -558,9 +563,13 @@ textarea { resize: vertical; }
   background: color-mix(in srgb, var(--chip) 14%, transparent);
   border-left: 2px solid var(--chip);
   border-radius: 3px; padding: 1px 4px;
-  overflow: hidden;
+  overflow: hidden; flex: none;
 }
-.cal-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* flex 項目預設不會縮到比內容窄,沒有 min-width: 0 就只會被裁掉、不會出現 …… */
+.cal-chip-text {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .cal-chip.is-done { opacity: .5; text-decoration: line-through; }
 .cal-more { font-size: .72rem; color: var(--text-muted); }
 
@@ -707,7 +716,8 @@ textarea { resize: vertical; }
   .stat-row { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
   .filter-box > summary { display: block; }
   /* 手機的格子放不下文字,只留色點,詳細內容點日期後在下方看 */
-  .cal-cell { display: block; min-height: 54px; padding: 4px 3px; }
+  .cal-grid { --cal-cell-h: 58px; }
+  .cal-cell { display: block; padding: 4px 3px; }
   .cal-day { display: block; margin-bottom: 3px; }
   /* 今天的數字要維持成小圓標,不能被 display:block 撐滿整格 */
   .cal-cell.today .cal-day { display: inline-block; padding: 1px 6px; }

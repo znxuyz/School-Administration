@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=23";
+} from "./config.js?v=24";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -368,8 +368,19 @@ const EVENT_TYPES = {
   settle: { label: "送結算", icon: "✓", color: "#1baf7a" }
 };
 
-// 行事曆上的記事:和計畫無關的提醒(訪視、預演、開學日…),全校共看
+// 行事曆上的記事:和計畫無關的提醒(訪視、預演、開學日…)
 const NOTE_COLOR = "#7c5cd6";
+
+// 記事的可見範圍。預設全校,寫的時候可以縮小。
+const NOTE_SCOPES = [
+  { id: "all",  label: "全校可看" },
+  { id: "dept", label: "同處室" },
+  { id: "self", label: "只有自己" }
+];
+const NOTE_SCOPE_LABEL = Object.fromEntries(NOTE_SCOPES.map((x) => [x.id, x.label]));
+
+/** 舊記事沒有 scope 欄位,一律視為全校可看(當初就是這樣) */
+const noteScopeOf = (n) => (NOTE_SCOPES.some((x) => x.id === n.scope) ? n.scope : "all");
 
 /** 某一天的記事,新增順序在前的先列 */
 const notesOn = (notes, date) =>
@@ -754,6 +765,19 @@ function canSee(plan) {
 const canEditNote = (n) => (n.ownerEmail || "").toLowerCase() === myEmail() || isAdmin();
 
 /**
+ * 誰看得到這則記事:全校的大家都看得到、自己寫的一定看得到、
+ * 「同處室」的只有同處室的人看得到。
+ * 資料層已經用查詢條件和安全規則擋過一次,這裡是第二道防線。
+ */
+function canSeeNote(n) {
+  if ((n.ownerEmail || "").toLowerCase() === myEmail()) return true;
+  const scope = noteScopeOf(n);
+  if (scope === "all") return true;
+  if (scope === "dept") return !!n.dept && n.dept === state.member?.dept;
+  return false;
+}
+
+/**
  * 誰能編輯這個計畫:只有承辦人自己和管理員。
  * 主任看得到同處室的計畫,但不能代為修改 —— 責任歸屬留給承辦人。
  */
@@ -898,13 +922,27 @@ function subscribeData() {
     }));
   });
 
-  // 行事曆記事是全校共用的
-  state.unsubscribe.push(
-    onSnapshot(collection(db, "notes"), (snap) => {
-      state.notes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      if (state.tab === "calendar") renderCalendar();
-    }, (e) => console.error("讀取記事失敗", e))
-  );
+  // 行事曆記事分三種可見範圍,所以要分三個查詢再合併 ——
+  // 安全規則會擋掉看不到的,不分開查會整個查詢被拒絕。
+  const noteRef = collection(db, "notes");
+  const noteQueries = [
+    query(noteRef, where("scope", "==", "all")),
+    query(noteRef, where("ownerEmail", "==", myEmail())),
+    query(noteRef, where("scope", "==", "dept"), where("dept", "==", state.member?.dept || ""))
+  ];
+  const noteBuckets = noteQueries.map(() => []);
+  const mergeNotes = () => {
+    const byId = new Map();
+    noteBuckets.flat().forEach((n) => byId.set(n.id, n));
+    state.notes = [...byId.values()].filter(canSeeNote);   // 第二道防線
+    if (state.tab === "calendar") renderCalendar();
+  };
+  noteQueries.forEach((q, i) => {
+    state.unsubscribe.push(onSnapshot(q, (snap) => {
+      noteBuckets[i] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      mergeNotes();
+    }, (e) => console.error("讀取記事失敗", e)));
+  });
 
   // 自訂範本是全校共用的,每位老師都要讀得到
   state.unsubscribe.push(
@@ -1779,11 +1817,16 @@ function renderCalDetail(byDate) {
   }).join("");
 
   // 記事是和計畫無關的提醒,誰寫的就由誰(或管理員)改
-  const noteRows = notes.map((n) => `
+  const noteRows = notes.map((n) => {
+    const scope = noteScopeOf(n);
+    // 全校可看是預設,不用標;縮小範圍的才標出來
+    const tag = scope === "dept" ? `限 ${n.dept || "同處室"}` : scope === "self" ? "只有自己" : "";
+    return `
     <li>
       <span class="cal-dot" style="background:${NOTE_COLOR}"></span>
       <span class="cal-list-type">記事</span>
       <span class="cal-list-title">${esc(n.text)}</span>
+      ${tag ? `<span class="note-scope">${esc(tag)}</span>` : ""}
       <span class="muted">${esc(n.ownerName || "")}</span>
       ${canEditNote(n) ? `
         <span class="note-tools">
@@ -1792,7 +1835,8 @@ function renderCalDetail(byDate) {
           <button type="button" class="icon-btn icon-danger" data-note-del="${esc(n.id)}"
                   title="刪除這則記事" aria-label="刪除這則記事">✕</button>
         </span>` : ""}
-    </li>`).join("");
+    </li>`;
+  }).join("");
 
   box.innerHTML = `
     <div class="cal-detail-head">
@@ -1806,10 +1850,16 @@ function renderCalDetail(byDate) {
       <input id="note-text" maxlength="100" autocomplete="off"
              placeholder="${editing ? "修改這則記事…" : "在這一天加一則記事,例:縣府到校訪視"}"
              value="${esc(editing ? editing.text : "")}" aria-label="記事內容">
+      <select id="note-scope" aria-label="誰看得到這則記事">
+        ${NOTE_SCOPES.map((x) => `<option value="${x.id}"${
+          (editing ? noteScopeOf(editing) : "all") === x.id ? " selected" : ""}>${x.label}</option>`).join("")}
+      </select>
       <button type="submit" class="btn btn-sm btn-primary">${editing ? "儲存" : "新增記事"}</button>
       ${editing ? `<button type="button" class="btn btn-sm btn-ghost" id="note-cancel">取消</button>` : ""}
     </form>
-    <p class="muted small note-hint">記事全校都看得到,只有寫的人和管理員能修改或刪除。</p>`;
+    <p class="muted small note-hint">
+      記事預設全校看得到,可以改成只有同處室或只有自己;不論哪一種,都只有寫的人和管理員能修改或刪除。
+    </p>`;
 }
 
 $("#cal-prev").addEventListener("click", () => {
@@ -1877,14 +1927,18 @@ $("#cal-detail").addEventListener("submit", async (e) => {
   const date = state.cal.picked;
   if (!text || !date) return;
 
+  const picked = $("#note-scope").value;
+  const scope = NOTE_SCOPES.some((x) => x.id === picked) ? picked : "all";
   const editing = state.notes.find((n) => n.id === state.editingNote);
   try {
     if (editing) {
-      await updateDoc(doc(db, "notes", editing.id), { text, ...stamp() });
-      toast("記事已更新", "good");
+      await updateDoc(doc(db, "notes", editing.id), { text, scope, ...stamp() });
+      toast(`記事已更新(${NOTE_SCOPE_LABEL[scope]})`, "good");
     } else {
       await addDoc(collection(db, "notes"), {
-        date, text,
+        date, text, scope,
+        // 「同處室」要靠這個欄位比對,寫的當下記下來
+        dept: state.member?.dept || "",
         ownerEmail: myEmail(),
         ownerName: state.member?.name || "",
         // 同一天多則記事照新增順序排,所以留一個可排序的欄位
@@ -1892,7 +1946,7 @@ $("#cal-detail").addEventListener("submit", async (e) => {
         createdAt: serverTimestamp(),
         ...stamp()
       });
-      toast("已加入記事", "good");
+      toast(`已加入記事(${NOTE_SCOPE_LABEL[scope]})`, "good");
     }
     state.editingNote = "";
     renderCalendar();

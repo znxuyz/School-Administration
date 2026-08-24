@@ -64,26 +64,39 @@ service cloud.firestore {
     }
 
     // ---------- 行事曆記事 ----------
-    // 全校共用的行事曆註記(訪視、預演、開學日…),和計畫無關。
+    // 行事曆上的註記(訪視、預演、開學日…),和計畫無關。
     // 每個人都寫得了,但只能改自己寫的;管理員可以代為整理。
     match /notes/{noteId} {
-      allow read: if isMember();
 
-      allow create: if isMember()
-        && request.resource.data.ownerEmail == emailKey()
-        && request.resource.data.date is string
-        && request.resource.data.date.size() == 10
-        && request.resource.data.text is string
-        && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 100;
+      // 可見範圍:all 全校、dept 同處室、self 只有自己。
+      // 舊記事沒有這個欄位,一律當成全校(當初就是這樣),所以用 get 帶預設值。
+      function noteVisible(d) {
+        return d.get('scope', 'all') == 'all'
+          || d.ownerEmail == emailKey()
+          || (d.get('scope', 'all') == 'dept' && d.get('dept', '') == memberData().dept);
+      }
 
+      function validNote(d) {
+        return d.ownerEmail == emailKey()
+          && d.date is string && d.date.size() == 10
+          && d.text is string && d.text.size() > 0 && d.text.size() <= 100
+          && d.get('scope', 'all') in ['all', 'dept', 'self']
+          && d.get('dept', '') is string;
+      }
+
+      allow read: if isMember() && noteVisible(resource.data);
+
+      allow create: if isMember() && validNote(request.resource.data);
+
+      // 改內容或可見範圍都可以,但不能把記事變成別人寫的
       allow update: if isMember()
         && (resource.data.ownerEmail == emailKey() || isAdmin())
-        // 改內容可以,但不能把記事變成別人寫的
         && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && request.resource.data.date is string
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 100;
+        && request.resource.data.text.size() <= 100
+        && request.resource.data.get('scope', 'all') in ['all', 'dept', 'self'];
 
       allow delete: if isMember() && (resource.data.ownerEmail == emailKey() || isAdmin());
     }

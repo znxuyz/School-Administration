@@ -822,6 +822,12 @@ textarea { resize: vertical; }
 /* ---------- 行事曆記事 ---------- */
 .note-form { display: flex; gap: 8px; margin-top: 12px; }
 .note-form input { flex: 1; min-width: 0; }
+.note-form select { width: auto; min-width: 8em; }
+/* 不是全校可看的記事,標一下範圍 */
+.note-scope {
+  background: var(--accent-wash); color: var(--text-secondary);
+  border-radius: 4px; padding: 1px 7px; font-size: .78rem; white-space: nowrap;
+}
 .note-hint { margin: 6px 0 0; }
 .note-tools { margin-left: auto; display: flex; gap: 2px; }
 .cal-list li .note-tools .icon-btn { opacity: .5; }
@@ -830,4 +836,5 @@ textarea { resize: vertical; }
 @media (max-width: 720px) {
   .note-form { flex-wrap: wrap; }
   .note-form input { flex: 1 1 100%; }
+  .note-form select { flex: 1; min-width: 0; }
 }

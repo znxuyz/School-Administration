@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=21";
+} from "./config.js?v=22";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1130,7 +1130,8 @@ function applyFilters(plans) {
     if (owner && (p.ownerEmail || "").toLowerCase() !== owner) return false;
     if (unit && !unitsOf(p).includes(unit)) return false;
     if (stage && currentStage(p)?.id !== stage) return false;
-    if (status && statusOf(p) !== status) return false;
+    // open = 還在辦(沒結案的都算),其餘就是各自的狀態
+    if (status === "open" ? statusOf(p) === "done" : (status && statusOf(p) !== status)) return false;
     return true;
   });
 }
@@ -1145,9 +1146,10 @@ function renderStats(plans, target = "#stat-row") {
   // 選取狀態只有處室總覽那排要顯示 —— 承辦工作那排點了就跳走,不會停在選取中
   const pressed = target === "#stat-row";
 
+  // 「進行中」= 這一頁清單上的件數(還沒結案的全部),不是只算沒出狀況的那幾件。
+  // 逾期與待更新是它的子集,拿來提醒哪幾件要先處理。
   const tiles = [
-    { key: "", label: "計畫總數", value: counts.total, color: "var(--text-muted)" },
-    { key: "active", label: "進行中", value: counts.active, color: STATUS_META.active.color },
+    { key: "open", label: "進行中", value: counts.total - counts.done, color: STATUS_META.active.color },
     { key: "overdue", label: "逾期", value: counts.overdue, color: STATUS_META.overdue.color },
     { key: "stale", label: "待更新", value: counts.stale, color: STATUS_META.stale.color },
     { key: "done", label: "已完成", value: counts.done, color: STATUS_META.done.color },

@@ -818,3 +818,16 @@ textarea { resize: vertical; }
   .next-chip .next-label { margin-bottom: 2px; }
 }
 
+
+/* ---------- 行事曆記事 ---------- */
+.note-form { display: flex; gap: 8px; margin-top: 12px; }
+.note-form input { flex: 1; min-width: 0; }
+.note-hint { margin: 6px 0 0; }
+.note-tools { margin-left: auto; display: flex; gap: 2px; }
+.cal-list li .note-tools .icon-btn { opacity: .5; }
+.cal-list li:hover .note-tools .icon-btn,
+.note-tools .icon-btn:focus-visible { opacity: 1; }
+@media (max-width: 720px) {
+  .note-form { flex-wrap: wrap; }
+  .note-form input { flex: 1 1 100%; }
+}

@@ -63,6 +63,31 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ---------- 行事曆記事 ----------
+    // 全校共用的行事曆註記(訪視、預演、開學日…),和計畫無關。
+    // 每個人都寫得了,但只能改自己寫的;管理員可以代為整理。
+    match /notes/{noteId} {
+      allow read: if isMember();
+
+      allow create: if isMember()
+        && request.resource.data.ownerEmail == emailKey()
+        && request.resource.data.date is string
+        && request.resource.data.date.size() == 10
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 100;
+
+      allow update: if isMember()
+        && (resource.data.ownerEmail == emailKey() || isAdmin())
+        // 改內容可以,但不能把記事變成別人寫的
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 100;
+
+      allow delete: if isMember() && (resource.data.ownerEmail == emailKey() || isAdmin());
+    }
+
     // ---------- 自訂步驟範本 ----------
     // 全校共用:每位成員都套用得到,但只有管理員能新增或刪除,
     // 免得範本清單被每個人各自的版本塞滿。

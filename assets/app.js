@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=22";
+} from "./config.js?v=23";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -368,6 +368,14 @@ const EVENT_TYPES = {
   settle: { label: "送結算", icon: "✓", color: "#1baf7a" }
 };
 
+// 行事曆上的記事:和計畫無關的提醒(訪視、預演、開學日…),全校共看
+const NOTE_COLOR = "#7c5cd6";
+
+/** 某一天的記事,新增順序在前的先列 */
+const notesOn = (notes, date) =>
+  (notes || []).filter((n) => n.date === date)
+    .sort((a, b) => String(a.createdAtDay || "").localeCompare(String(b.createdAtDay || "")));
+
 /** 一個計畫在行事曆上會出現的日期 */
 function eventsOf(plan) {
   const done = statusOf(plan) === "done";
@@ -652,6 +660,8 @@ const state = {
   plans: [],
   members: [],
   templates: [],    // 管理員存下來的自訂步驟範本(全校共用)
+  notes: [],        // 行事曆記事(全校共用)
+  editingNote: "",  // 正在改哪一則記事(空字串 = 新增)
   loadError: "",     // 讀取失敗時顯示在總覽上,不要讓老師只看到空白
   tab: "mine",       // 登入後先看自己承辦的工作
   expanded: new Set(),          // 展開步驟的計畫 id
@@ -739,6 +749,9 @@ function canSee(plan) {
   if (role === "director") return plan.dept === state.member.dept;
   return false;
 }
+
+/** 行事曆記事只有寫的人和管理員能改 */
+const canEditNote = (n) => (n.ownerEmail || "").toLowerCase() === myEmail() || isAdmin();
 
 /**
  * 誰能編輯這個計畫:只有承辦人自己和管理員。
@@ -884,6 +897,14 @@ function subscribeData() {
       renderDashboard();
     }));
   });
+
+  // 行事曆記事是全校共用的
+  state.unsubscribe.push(
+    onSnapshot(collection(db, "notes"), (snap) => {
+      state.notes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (state.tab === "calendar") renderCalendar();
+    }, (e) => console.error("讀取記事失敗", e))
+  );
 
   // 自訂範本是全校共用的,每位老師都要讀得到
   state.unsubscribe.push(
@@ -1676,28 +1697,34 @@ function renderCalendar() {
 
   $("#cal-title").textContent = `${y} 年 ${m + 1} 月`;
   $("#cal-legend").innerHTML = Object.entries(EVENT_TYPES).map(([k, t]) =>
-    `<span class="cal-key"><span class="cal-dot" style="background:${t.color}"></span>${esc(t.label)}</span>`).join("");
+    `<span class="cal-key"><span class="cal-dot" style="background:${t.color}"></span>${esc(t.label)}</span>`).join("") +
+    `<span class="cal-key"><span class="cal-dot" style="background:${NOTE_COLOR}"></span>記事</span>`;
 
   const cells = monthCells(y, m, today);
 
   // 本月摘要
   const inMonth = cells.filter((c) => c.inMonth).flatMap((c) => byDate.get(c.ymd) || []);
   const count = (t) => inMonth.filter((e) => e.type === t).length;
-  $("#cal-summary").textContent = inMonth.length
-    ? `本月 ${count("start")} 件開始、${count("end")} 件結束、${count("settle")} 件要送結算`
+  const notesThisMonth = cells.filter((c) => c.inMonth)
+    .reduce((n, c) => n + notesOn(state.notes, c.ymd).length, 0);
+  $("#cal-summary").textContent = inMonth.length || notesThisMonth
+    ? `本月 ${count("start")} 件開始、${count("end")} 件結束、${count("settle")} 件要送結算` +
+      (notesThisMonth ? `、${notesThisMonth} 則記事` : "")
     : "本月沒有任何日期";
 
   $("#cal-grid").innerHTML =
     DOW.map((d, i) => `<div class="cal-dow${i === 0 || i === 6 ? " weekend" : ""}">${d}</div>`).join("") +
     cells.map((c) => {
       const evs = byDate.get(c.ymd) || [];
+      const notes = notesOn(state.notes, c.ymd);
+      const total = evs.length + notes.length;
       const cls = [
         "cal-cell",
         c.inMonth ? "" : "outside",
         c.isToday ? "today" : "",
         c.dow === 0 || c.dow === 6 ? "weekend" : "",
         state.cal.picked === c.ymd ? "picked" : "",
-        evs.length ? "has-events" : ""
+        total ? "has-events" : ""
       ].filter(Boolean).join(" ");
 
       const chips = evs.slice(0, 3).map((ev) => {
@@ -1707,14 +1734,20 @@ function renderCalendar() {
                   <span class="cal-dot" style="background:${t.color}"></span>
                   <span class="cal-chip-text">${esc(ev.plan.title)}</span>
                 </span>`;
-      }).join("");
+      }).join("") +
+        notes.slice(0, 3 - Math.min(evs.length, 3)).map((n) => `
+          <span class="cal-chip cal-note" style="--chip:${NOTE_COLOR}" title="${esc(n.text)}">
+            <span class="cal-dot" style="background:${NOTE_COLOR}"></span>
+            <span class="cal-chip-text">${esc(n.text)}</span>
+          </span>`).join("");
 
+      const shown = Math.min(3, total);
       return `
         <button type="button" class="${cls}" data-date="${c.ymd}"
-                aria-label="${c.ymd} 有 ${evs.length} 個項目">
+                aria-label="${c.ymd} 有 ${total} 個項目">
           <span class="cal-day">${c.day}</span>
           ${chips}
-          ${evs.length > 3 ? `<span class="cal-more">還有 ${evs.length - 3} 項</span>` : ""}
+          ${total > shown ? `<span class="cal-more">還有 ${total - shown} 項</span>` : ""}
         </button>`;
     }).join("");
 
@@ -1730,22 +1763,53 @@ function renderCalDetail(byDate) {
     return;
   }
   const evs = (byDate.get(d) || []).slice().sort((a, b) => a.type.localeCompare(b.type));
+  const notes = notesOn(state.notes, d);
+  const editing = notes.find((n) => n.id === state.editingNote);
+
+  const planRows = evs.map((ev) => {
+    const t = EVENT_TYPES[ev.type];
+    const st = STATUS_META[statusOf(ev.plan)];
+    return `<li>
+      <span class="cal-dot" style="background:${t.color}"></span>
+      <span class="cal-list-type">${esc(t.label)}</span>
+      <span class="cal-list-title">${esc(ev.plan.title)}</span>
+      <span class="muted">${esc(ev.plan.dept)}・${esc(ev.plan.ownerName || ev.plan.ownerEmail || "")}</span>
+      <span class="badge ${st.cls}"><span aria-hidden="true">${st.icon}</span>${st.label}</span>
+    </li>`;
+  }).join("");
+
+  // 記事是和計畫無關的提醒,誰寫的就由誰(或管理員)改
+  const noteRows = notes.map((n) => `
+    <li>
+      <span class="cal-dot" style="background:${NOTE_COLOR}"></span>
+      <span class="cal-list-type">記事</span>
+      <span class="cal-list-title">${esc(n.text)}</span>
+      <span class="muted">${esc(n.ownerName || "")}</span>
+      ${canEditNote(n) ? `
+        <span class="note-tools">
+          <button type="button" class="icon-btn" data-note-edit="${esc(n.id)}"
+                  title="修改這則記事" aria-label="修改這則記事">✎</button>
+          <button type="button" class="icon-btn icon-danger" data-note-del="${esc(n.id)}"
+                  title="刪除這則記事" aria-label="刪除這則記事">✕</button>
+        </span>` : ""}
+    </li>`).join("");
+
   box.innerHTML = `
     <div class="cal-detail-head">
       <strong>${esc(d)}</strong>
       <button type="button" class="btn btn-sm btn-ghost" id="cal-clear">關閉</button>
     </div>
-    ${evs.length ? `<ul class="cal-list">${evs.map((ev) => {
-      const t = EVENT_TYPES[ev.type];
-      const st = STATUS_META[statusOf(ev.plan)];
-      return `<li>
-        <span class="cal-dot" style="background:${t.color}"></span>
-        <span class="cal-list-type">${esc(t.label)}</span>
-        <span class="cal-list-title">${esc(ev.plan.title)}</span>
-        <span class="muted">${esc(ev.plan.dept)}・${esc(ev.plan.ownerName || ev.plan.ownerEmail || "")}</span>
-        <span class="badge ${st.cls}"><span aria-hidden="true">${st.icon}</span>${st.label}</span>
-      </li>`;
-    }).join("")}</ul>` : `<p class="muted small">這一天沒有項目。</p>`}`;
+    ${planRows || noteRows
+      ? `<ul class="cal-list">${planRows}${noteRows}</ul>`
+      : `<p class="muted small">這一天沒有項目。</p>`}
+    <form class="note-form" id="note-form">
+      <input id="note-text" maxlength="100" autocomplete="off"
+             placeholder="${editing ? "修改這則記事…" : "在這一天加一則記事,例:縣府到校訪視"}"
+             value="${esc(editing ? editing.text : "")}" aria-label="記事內容">
+      <button type="submit" class="btn btn-sm btn-primary">${editing ? "儲存" : "新增記事"}</button>
+      ${editing ? `<button type="button" class="btn btn-sm btn-ghost" id="note-cancel">取消</button>` : ""}
+    </form>
+    <p class="muted small note-hint">記事全校都看得到,只有寫的人和管理員能修改或刪除。</p>`;
 }
 
 $("#cal-prev").addEventListener("click", () => {
@@ -1770,10 +1834,72 @@ $("#cal-grid").addEventListener("click", (e) => {
   state.cal.picked = state.cal.picked === cell.dataset.date ? "" : cell.dataset.date;
   renderCalendar();
 });
-$("#cal-detail").addEventListener("click", (e) => {
-  if (!e.target.closest("#cal-clear")) return;
-  state.cal.picked = "";
-  renderCalendar();
+$("#cal-detail").addEventListener("click", async (e) => {
+  if (e.target.closest("#cal-clear")) {
+    state.cal.picked = "";
+    state.editingNote = "";
+    renderCalendar();
+    return;
+  }
+  if (e.target.closest("#note-cancel")) {
+    state.editingNote = "";
+    renderCalendar();
+    return;
+  }
+
+  const edit = e.target.closest("[data-note-edit]");
+  if (edit) {
+    state.editingNote = edit.dataset.noteEdit;
+    renderCalendar();
+    $("#note-text")?.focus();
+    return;
+  }
+
+  const del = e.target.closest("[data-note-del]");
+  if (del) {
+    const n = state.notes.find((x) => x.id === del.dataset.noteDel);
+    if (!n || !confirm(`要刪掉這則記事嗎?\n${n.date} ${n.text}`)) return;
+    try {
+      await deleteDoc(doc(db, "notes", n.id));
+      toast("已刪除記事", "good");
+    } catch (err) {
+      toast(`刪除失敗:${err.message}`, "error");
+    }
+  }
+});
+
+// 新增或修改記事
+$("#cal-detail").addEventListener("submit", async (e) => {
+  if (!e.target.closest("#note-form")) return;
+  e.preventDefault();
+
+  const text = $("#note-text").value.trim();
+  const date = state.cal.picked;
+  if (!text || !date) return;
+
+  const editing = state.notes.find((n) => n.id === state.editingNote);
+  try {
+    if (editing) {
+      await updateDoc(doc(db, "notes", editing.id), { text, ...stamp() });
+      toast("記事已更新", "good");
+    } else {
+      await addDoc(collection(db, "notes"), {
+        date, text,
+        ownerEmail: myEmail(),
+        ownerName: state.member?.name || "",
+        // 同一天多則記事照新增順序排,所以留一個可排序的欄位
+        createdAtDay: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        ...stamp()
+      });
+      toast("已加入記事", "good");
+    }
+    state.editingNote = "";
+    renderCalendar();
+    $("#note-text")?.focus();
+  } catch (err) {
+    toast(`${editing ? "更新" : "新增"}記事失敗:${err.message}`, "error");
+  }
 });
 
 /** 某位成員名下的計畫 */

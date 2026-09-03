@@ -16,7 +16,7 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=27";
+} from "./config.js?v=28";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -870,6 +870,7 @@ onAuthStateChanged(auth, async (user) => {
 
   loadView();            // 上次的篩選、排序、展開狀態(這台裝置、這個帳號)
   syncFilterFields();
+  syncSortUI();
   applyScopeLabels();
   showView("app");
   subscribeData();
@@ -973,12 +974,18 @@ function subscribeData() {
 
 /* ---------------- 分頁切換 ---------------- */
 
+// 左側快捷鈕只在會列出計畫的分頁出現。
+// 行事曆和成員管理沒有計畫清單可以排序;已結案固定照結案日期排,也不該被改掉。
+const FAB_TABS = ["mine", "dashboard", "search"];
+
 function setTab(tab) {
   state.tab = tab;
   $$(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   for (const p of ["dashboard", "search", "calendar", "closed", "mine", "members"]) {
     show($(`#panel-${p}`), p === tab);
   }
+  show($("#fab-rail"), FAB_TABS.includes(tab));
+  showSortMenu(false);
   if (tab === "calendar") renderCalendar();
   // 切到搜尋就直接可以打字,不用再點一次輸入框
   if (tab === "search") $("#search-q").focus();
@@ -1119,9 +1126,56 @@ $("#search-q").addEventListener("input", (e) => {
     announce($("#search-count").textContent);
   }, 200);
 });
-$("#f-sort").addEventListener("change", (e) => {
-  state.sort = SORTS.some((s) => s.id === e.target.value) ? e.target.value : "due";
-  afterFilterChange();
+$("#f-sort").addEventListener("change", (e) => setSort(e.target.value));
+
+/* ---------------- 左側浮動快捷鈕 ---------------- */
+
+// 排序只有一個設定值,但有兩個地方可以改(左側快捷鈕、搜尋的篩選區),
+// 所以改完一定要把兩邊都同步回來,不然畫面上會出現兩個不一樣的答案。
+const SORT_LABEL = Object.fromEntries(SORTS.map((s) => [s.id, s.label]));
+
+function syncSortUI() {
+  $("#f-sort").value = state.sort;
+  $("#sort-menu").innerHTML =
+    `<div class="fab-menu-head">排序方式</div>` +
+    SORTS.map((s) => `<button type="button" role="menuitemradio" data-sort="${s.id}"
+      aria-checked="${s.id === state.sort}">${esc(s.label)}</button>`).join("");
+  $("#btn-sort").title = `排序方式:${SORT_LABEL[state.sort]}`;
+  $("#btn-sort").setAttribute("aria-label", `排序方式,目前是${SORT_LABEL[state.sort]}`);
+}
+
+function setSort(mode) {
+  state.sort = SORTS.some((s) => s.id === mode) ? mode : "due";
+  syncSortUI();
+  // 排序會影響承辦工作、總覽和搜尋三張清單,不是只有搜尋
+  renderPlanLists();
+  saveView();
+  announce(`已改成依${SORT_LABEL[state.sort]}排序`);
+}
+
+function showSortMenu(open) {
+  show($("#sort-menu"), open);
+  $("#btn-sort").setAttribute("aria-expanded", String(open));
+}
+
+$("#btn-sort").addEventListener("click", (e) => {
+  e.stopPropagation();
+  showSortMenu($("#sort-menu").hidden);
+});
+$("#sort-menu").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-sort]");
+  if (!btn) return;
+  setSort(btn.dataset.sort);
+  showSortMenu(false);
+  $("#btn-sort").focus();
+});
+// 點別的地方或按 Esc 就收起來
+document.addEventListener("click", () => showSortMenu(false));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#sort-menu").hidden) {
+    showSortMenu(false);
+    $("#btn-sort").focus();
+  }
 });
 
 // 篩選或排序改過之後:重畫搜尋結果、記住這次的選擇,
@@ -1645,7 +1699,7 @@ const boardPlans = () =>
  * 不和還要辦的工作混在一起排隊。
  */
 function renderBoard(prefix, plans, editableFn, emptyText) {
-  const open = sortPlans(plans.filter((p) => statusOf(p) !== "done"), "due");
+  const open = sortPlans(plans.filter((p) => statusOf(p) !== "done"), state.sort);
   const done = plans.length - open.length;
 
   $(`#${prefix}-list`).innerHTML = open.length
@@ -1669,8 +1723,8 @@ function renderClosed() {
 }
 
 function renderDashboard() {
-  // 總覽固定照急迫程度排,而且沒有篩選 UI:一打開就是「現在該看的東西」。
-  // 要挑條件、換學年度、看垃圾桶,都到「搜尋」分頁。
+  // 總覽沒有篩選 UI:一打開就是「現在該看的東西」。
+  // 要挑條件、換學年度、看垃圾桶,都到「搜尋」分頁。排序用左側的快捷鈕。
   const plans = boardPlans();
   renderRecurBanner();
   renderWeekBox();
@@ -1682,20 +1736,19 @@ function renderDashboard() {
     show($("#dashboard-done"), false);
     return;
   }
+  // 這裡只寫學年度 —— 件數統計磚上就有了,已結案的件數則會一路累積,
+  // 寫在這裡只會越變越大,幫不上什麼忙。
   const n = renderBoard("dashboard", plans, canEdit, "這個學年度還沒有計畫。");
-  $("#dashboard-scope").textContent =
-    `${currentAcademicYear()} 學年度・還在辦 ${n.open} 件` +
-    `${n.done ? `・已結案 ${n.done} 件(在「已結案」分頁)` : ""}`;
+  $("#dashboard-scope").textContent = n.open || n.done
+    ? `${currentAcademicYear()} 學年度`
+    : "";
 }
 
 function renderMine() {
   const mine = livePlans().filter(isMine);
   renderStats(mine, "#mine-stat-row");
-  const n = renderBoard("mine", mine, () => true,
-    "你還沒有建立任何計畫,點上方「＋ 新增計畫」開始。");
-  $("#mine-scope").textContent = mine.length
-    ? `還在辦 ${n.open} 件${n.done ? `・已結案 ${n.done} 件(在「已結案」分頁)` : ""}`
-    : "";
+  renderBoard("mine", mine, () => true,
+    "你還沒有建立任何計畫,點左邊的「＋」開始。");
 }
 
 /**

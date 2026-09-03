@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=27">
+<link rel="stylesheet" href="assets/style.css?v=28">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -78,6 +78,21 @@
     </div>
   </header>
 
+  <!-- 常駐在畫面左側的快捷鈕。捲到清單哪裡都按得到,不用再滑回最上面。
+       只在會列出計畫的三個分頁出現(承辦工作、處室總覽、搜尋)。 -->
+  <div class="fab-rail" id="fab-rail" hidden>
+    <button id="btn-new-plan" class="fab fab-primary" title="新增計畫" aria-label="新增計畫">
+      <span aria-hidden="true">＋</span>
+    </button>
+    <div class="fab-wrap">
+      <button id="btn-sort" class="fab" title="排序方式" aria-label="排序方式"
+              aria-haspopup="true" aria-expanded="false" aria-controls="sort-menu">
+        <span aria-hidden="true">⇅</span>
+      </button>
+      <div id="sort-menu" class="fab-menu" role="menu" aria-label="排序方式" hidden></div>
+    </div>
+  </div>
+
   <main class="wrap">
 
     <!-- 承辦工作(登入後的預設畫面) -->
@@ -85,11 +100,9 @@
       <div class="panel-head">
         <h2>承辦工作</h2>
         <p class="muted">你自己承辦的計畫。在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度與公文流向。</p>
-        <button id="btn-new-plan" class="btn btn-primary">＋ 新增計畫</button>
       </div>
 
       <div class="stat-row" id="mine-stat-row"></div>
-      <p class="muted small board-scope" id="mine-scope"></p>
 
       <div id="mine-list" class="plan-list"></div>
     </section>
@@ -419,6 +432,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=27"></script>
+<script type="module" src="assets/app.js?v=28"></script>
 </body>
 </html>

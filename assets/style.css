@@ -11,11 +11,19 @@
   --border: rgba(11, 11, 11, 0.10);
   --field-bg: #ffffff;
 
-  /* 主色(sequential blue ramp) */
+  /* 主色。老師可以按標題列的圖示自己換(見 app.js 的「主題色」)。
+     換色時只會蓋掉 --accent、--accent-fill、--accent-ink 三個,
+     底下的深階、淡底、進度條底色都由 --accent 用 color-mix 算出來 ——
+     混色的對象是會隨深淺模式變的 --page / --surface-1,
+     所以換一個顏色,兩種模式的配色就一起跟著對了,不用分別設定。 */
   --accent: #2a78d6;
-  --accent-strong: #1c5cab;
-  --accent-track: #cde2fb;       /* 進度條未填滿:同色系較淺階 */
-  --accent-wash: #eaf2fd;
+  /* 只給「背景」用 —— 漸層主題會把這個換成 linear-gradient,
+     邊框、外框、文字那些不吃漸層的地方一律還是用 --accent */
+  --accent-fill: var(--accent);
+  --accent-ink: #fff;            /* 疊在主色上的字色。選到很亮的顏色時 JS 會改成深色 */
+  --accent-strong: color-mix(in srgb, var(--accent) 76%, #000);
+  --accent-track: color-mix(in srgb, var(--accent) 23%, var(--surface-1));
+  --accent-wash: color-mix(in srgb, var(--accent) 9%, var(--page));
 
   /* 狀態色(固定,不隨主題調整) */
   --status-good: #0ca30c;
@@ -42,10 +50,12 @@
     --border: rgba(255, 255, 255, 0.10);
     --field-bg: #222220;
 
+    /* 深色模式的主色亮一點,而且要「加白」才會更醒目(淺色模式是加黑),
+       底色深所以 track 與 wash 的混色比例也要拉高才看得出來 */
     --accent: #3987e5;
-    --accent-strong: #86b6ef;
-    --accent-track: #184f95;
-    --accent-wash: #14273f;
+    --accent-strong: color-mix(in srgb, var(--accent) 64%, #fff);
+    --accent-track: color-mix(in srgb, var(--accent) 55%, var(--surface-1));
+    --accent-wash: color-mix(in srgb, var(--accent) 20%, var(--page));
 
     --good-track: #123d12;
     --critical-track: #4a1c1c;
@@ -113,7 +123,7 @@ p.muted { margin: 0 0 .8em; }
 }
 .fab:hover { background: var(--accent-wash); }
 .fab-primary {
-  background: var(--accent); color: #fff;
+  background: var(--accent-fill); color: var(--accent-ink);
   border-color: transparent; font-size: 1.6rem;
 }
 .fab-primary:hover { background: var(--accent-strong); }
@@ -187,8 +197,60 @@ p.muted { margin: 0 0 .8em; }
   padding: 10px max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left));
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.brand-mark { font-size: 1.15rem; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; position: relative; }
+/* 品牌圖示同時是換主題色的入口,所以它是一顆按鈕 —— 但看起來要跟原本的圖示一樣 */
+.brand-mark {
+  font-size: 1.15rem; line-height: 1;
+  font-family: inherit; background: none; border: 0; cursor: pointer;
+  padding: 4px; margin: -4px; border-radius: 8px; color: inherit;
+}
+.brand-mark:hover { background: var(--accent-wash); }
+
+/* ---------- 主題色 ---------- */
+.accent-menu {
+  position: absolute; top: calc(100% + 10px); left: -6px; z-index: 40;
+  width: 268px; padding: 12px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 26px rgba(11, 11, 11, .22);
+  font-weight: 400;
+}
+.accent-head { display: flex; align-items: baseline; justify-content: space-between; }
+.accent-label { font-size: .78rem; color: var(--text-muted); }
+.accent-label-gap { display: block; margin-top: 12px; }
+.accent-current { font-size: .82rem; color: var(--text-secondary); }
+.accent-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 6px;
+}
+/* 漸層要看得出兩端的顏色,格子做寬一點 */
+.accent-grid-wide { grid-template-columns: repeat(3, 1fr); }
+.accent-swatch {
+  height: 30px; border-radius: 8px; cursor: pointer; padding: 0;
+  border: 1px solid var(--border); background: var(--sw);
+}
+.accent-grid-wide .accent-swatch { height: 26px; }
+.accent-swatch:hover { transform: scale(1.06); }
+/* 選中的那個描一圈,不用另外放勾勾(30px 的格子放不下) */
+.accent-swatch[aria-pressed="true"] {
+  outline: 2px solid var(--text-primary); outline-offset: 2px;
+}
+.accent-foot {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--hairline);
+}
+.accent-custom {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .82rem; color: var(--text-secondary); margin-right: auto;
+}
+.accent-custom input[type="color"] {
+  width: 30px; height: 26px; padding: 0; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px; background: none;
+}
+
+@media (prefers-reduced-motion: reduce) { .accent-swatch:hover { transform: none; } }
+@media (max-width: 720px) {
+  /* 手機的標題列會換行,選單靠左邊界對齊比較不會超出畫面 */
+  .accent-menu { left: 0; width: min(268px, calc(100vw - 28px)); }
+}
 .tabs { display: flex; gap: 4px; margin-right: auto; flex-wrap: wrap; }
 .tab {
   border: 0; background: none; cursor: pointer;
@@ -199,7 +261,7 @@ p.muted { margin: 0 0 .8em; }
 }
 .tab:hover { background: var(--accent-wash); color: var(--text-primary); }
 .tab[aria-selected="true"] {
-  background: var(--accent); color: #fff; font-weight: 600;
+  background: var(--accent-fill); color: var(--accent-ink); font-weight: 600;
 }
 .user-box { display: flex; align-items: center; gap: 10px; }
 .user-name { color: var(--text-secondary); font-size: .9rem; }
@@ -217,7 +279,7 @@ p.muted { margin: 0 0 .8em; }
 }
 .btn:hover { border-color: var(--text-muted); }
 .btn-primary {
-  background: var(--accent); color: #fff; border-color: transparent; font-weight: 600;
+  background: var(--accent-fill); color: var(--accent-ink); border-color: transparent; font-weight: 600;
 }
 .btn-primary:hover { background: var(--accent-strong); }
 .btn-ghost { background: none; border-color: transparent; color: var(--text-secondary); }
@@ -346,7 +408,7 @@ textarea { resize: vertical; }
 }
 .meter-fill {
   height: 100%; border-radius: 0 4px 4px 0;
-  background: var(--accent); transition: width .25s ease;
+  background: var(--accent-fill); transition: width .25s ease;
 }
 .plan[data-status="overdue"] .meter-track { background: var(--critical-track); }
 .plan[data-status="overdue"] .meter-fill  { background: var(--status-critical); }
@@ -411,7 +473,7 @@ textarea { resize: vertical; }
 
 .next-chip {
   display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  background: var(--accent); color: #fff;
+  background: var(--accent-fill); color: var(--accent-ink);
   border-radius: 999px; padding: 5px 13px;
   font-size: .86rem;
 }
@@ -476,7 +538,7 @@ textarea { resize: vertical; }
 .stage-name { font-weight: 600; }
 .stage-count { font-variant-numeric: tabular-nums; font-size: .8rem; }
 .stage-cell.complete { background: var(--good-track); color: var(--text-primary); }
-.stage-cell.current  { background: var(--accent); color: #fff; }
+.stage-cell.current  { background: var(--accent-fill); color: var(--accent-ink); }
 .stage-cell.blank    { opacity: .55; }
 
 /* 步驟清單 */
@@ -621,7 +683,7 @@ textarea { resize: vertical; }
 .cal-cell.picked { box-shadow: inset 0 0 0 2px var(--accent); }
 .cal-day { font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .cal-cell.today .cal-day {
-  background: var(--accent); color: #fff; font-weight: 600;
+  background: var(--accent-fill); color: var(--accent-ink); font-weight: 600;
   border-radius: 999px; padding: 1px 7px; align-self: flex-start;
 }
 

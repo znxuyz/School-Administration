@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=28">
+<link rel="stylesheet" href="assets/style.css?v=29">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,6 +17,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="行政追蹤">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<!-- 分頁上的小圖示只有 16-32px,整張圖縮到那麼小會糊掉,所以另外給一張只有主圖記的 -->
+<link rel="icon" href="assets/icons/favicon.png" sizes="64x64" type="image/png">
 <link rel="icon" href="assets/icons/icon-192.png" sizes="192x192" type="image/png">
 </head>
 <body>
@@ -59,8 +61,28 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">📋</span>
+        <!-- 品牌圖示同時是換主題色的入口 -->
+        <button id="btn-accent" class="brand-mark" type="button"
+                title="點這裡換主題色" aria-label="更換主題色"
+                aria-haspopup="true" aria-expanded="false">📋</button>
         <span class="brand-text">行政工作進度追蹤</span>
+
+        <div id="accent-menu" class="accent-menu" role="dialog" aria-label="主題色" hidden>
+          <div class="accent-head">
+            <span class="accent-label">單色</span>
+            <span class="accent-current" id="accent-current"></span>
+          </div>
+          <div class="accent-grid" data-solids></div>
+          <div class="accent-label accent-label-gap">漸層炫彩</div>
+          <div class="accent-grid accent-grid-wide" data-gradients></div>
+          <div class="accent-foot">
+            <label class="accent-custom">自訂
+              <input type="color" id="accent-custom" aria-label="自訂主題色">
+            </label>
+            <button type="button" id="accent-reset" class="btn btn-ghost btn-sm">回預設</button>
+            <button type="button" id="accent-done" class="btn btn-primary btn-sm">完成</button>
+          </div>
+        </div>
       </div>
       <nav class="tabs" role="tablist">
         <button class="tab" role="tab" data-tab="mine">承辦工作</button>
@@ -432,6 +454,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=28"></script>
+<script type="module" src="assets/app.js?v=29"></script>
 </body>
 </html>

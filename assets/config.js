@@ -3,7 +3,7 @@
 // 別忘了執行 ./bump.sh <新的號碼> 讓 index.html 與 sw.js 一起更新,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
 // ---------------------------------------------------------------
-export const APP_BUILD = 28;
+export const APP_BUILD = 29;
 
 // 版本代號用單字表示,畫面上不出現阿拉伯數字。
 // 一次改版換一個代號,五十個輪完再從「朔」開始。
@@ -42,6 +42,45 @@ export const firebaseConfig = {
 // ---------------------------------------------------------------
 // 以下都可以自行增刪,改完存檔推上 GitHub,網站就會跟著更新。
 // ---------------------------------------------------------------
+
+// 主題色。按標題列左上角的 📋 就可以換,選好會記在這台裝置的瀏覽器裡。
+//
+// 第一個的 id 是空字串,代表「回到預設」—— 選它會把行內樣式清掉,
+// 讓 style.css 裡深淺兩種模式各自的預設值重新生效,所以不要給它 color 以外的東西。
+//
+// 深淺色的深淺階、hover 色、淡底色都由 style.css 用 color-mix 從這個顏色算出來,
+// 這裡只要填一個好看的主色就好。
+export const ACCENT_SOLIDS = [
+  { id: "",       label: "預設藍",  color: "#2a78d6" },
+  { id: "teal",   label: "湖水綠",  color: "#0f8f86" },
+  { id: "forest", label: "森林綠",  color: "#2f7d3c" },
+  { id: "amber",  label: "琥珀",    color: "#b5730f" },
+  { id: "brick",  label: "磚紅",    color: "#c2453a" },
+  { id: "rose",   label: "玫瑰",    color: "#c43f75" },
+  { id: "violet", label: "紫羅蘭",  color: "#7048cc" },
+  { id: "slate",  label: "石墨",    color: "#4a5568" },
+  { id: "indigo", label: "靛青",    color: "#3b4fae" },
+  { id: "ocean",  label: "深海藍",  color: "#12617f" },
+  { id: "moss",   label: "苔綠",    color: "#5c7a29" },
+  { id: "plum",   label: "梅子",    color: "#8a3f6b" }
+];
+
+// 漸層只能當「背景」用(邊框、外框、文字不吃漸層),
+// 所以每一款都要另外指定一個代表色 color,那些地方會改用它。
+export const ACCENT_GRADIENTS = [
+  { id: "aurora", label: "極光", color: "#2596c8",
+    fill: "linear-gradient(135deg, #2a78d6, #1fc8c3)" },
+  { id: "dusk",   label: "晚霞", color: "#d1613f",
+    fill: "linear-gradient(135deg, #e8743a, #c43f75)" },
+  { id: "night",  label: "星夜", color: "#6b3fd4",
+    fill: "linear-gradient(135deg, #3d3ad4, #8e2de2)" },
+  { id: "tide",   label: "海潮", color: "#1a86b0",
+    fill: "linear-gradient(135deg, #0f8f86, #2a78d6)" },
+  { id: "ember",  label: "炭火", color: "#cf5a33",
+    fill: "linear-gradient(135deg, #e08a1e, #d0342c)" },
+  { id: "mint",   label: "薄荷", color: "#17a06a",
+    fill: "linear-gradient(135deg, #11998e, #34c76a)" }
+];
 
 // 成員角色。可見與可編輯的範圍一致,由小到大遞增。
 // 舊資料的 teacher 會自動視為 staff。

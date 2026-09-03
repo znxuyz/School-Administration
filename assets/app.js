@@ -14,9 +14,10 @@ import {
   APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
   UNIT_GROUPS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
-  ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
+  ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS,
+  ACCENT_SOLIDS, ACCENT_GRADIENTS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=28";
+} from "./config.js?v=29";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -685,6 +686,7 @@ const state = {
   cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
   filters: defaultFilters(),
   sort: "due",       // 排序是檢視方式,不算篩選條件,所以不放在 filters 裡
+  accent: "",        // 主題色:調色盤的 id 或自訂的 #rrggbb,空字串 = 預設
   query: "",         // 搜尋分頁的關鍵字。搜尋不受學年度等條件限制,所以也不放在 filters
   unsubscribe: []
 };
@@ -1169,12 +1171,121 @@ $("#sort-menu").addEventListener("click", (e) => {
   showSortMenu(false);
   $("#btn-sort").focus();
 });
+/* ---------------- 主題色 ---------------- */
+
+// 記在這台裝置上,不分帳號 —— 配色和深淺模式一樣是「這台電腦看起來怎樣」的偏好,
+// 而且這樣一開啟就是對的顏色,不必等登入完才換,免得畫面閃一下。
+const ACCENT_KEY = "admin-tracker:accent";
+const ACCENT_ALL = [...ACCENT_SOLIDS, ...ACCENT_GRADIENTS];
+const themeMeta = document.querySelector('meta[name="theme-color"][media*="light"]');
+const DEFAULT_THEME_COLOR = themeMeta?.content || ACCENT_SOLIDS[0].color;
+
+const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v || "");
+const accentPreset = (id) => ACCENT_ALL.find((a) => a.id && a.id === id);
+
+/**
+ * 疊在主色上的字色。選到亮黃、淺綠這種顏色時白字會看不見,
+ * 所以照相對亮度決定要白字還是黑字(公式同 WCAG 的 relative luminance)。
+ */
+function inkFor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#0b0b0b" : "#fff";
+}
+
+/**
+ * 套用主題色。value 可以是調色盤的 id,也可以是自訂的 #rrggbb;
+ * 空字串代表回到預設 —— 要把行內樣式整個清掉,不能改寫成預設色,
+ * 否則深色模式那組比較亮的預設值就被蓋住了。
+ */
+function applyAccent(value) {
+  const root = document.documentElement.style;
+  const preset = accentPreset(value);
+  const color = preset ? preset.color : (isHex(value) ? value : "");
+
+  if (color) {
+    root.setProperty("--accent", color);
+    root.setProperty("--accent-fill", preset?.fill || color);
+    root.setProperty("--accent-ink", inkFor(color));
+  } else {
+    for (const p of ["--accent", "--accent-fill", "--accent-ink"]) root.removeProperty(p);
+  }
+  // 手機的網址列/狀態列顏色也跟著換
+  if (themeMeta) themeMeta.content = color || DEFAULT_THEME_COLOR;
+
+  state.accent = color ? value : "";
+  syncAccentUI();
+}
+
+function accentLabel() {
+  const p = accentPreset(state.accent);
+  if (p) return p.label;
+  return isHex(state.accent) ? `自訂 ${state.accent.toUpperCase()}` : ACCENT_SOLIDS[0].label;
+}
+
+const swatchHtml = (a) => `<button type="button" class="accent-swatch" data-accent="${a.id}"
+  style="--sw:${a.fill || a.color}" title="${esc(a.label)}" aria-label="${esc(a.label)}"
+  aria-pressed="${(a.id || "") === state.accent}"></button>`;
+
+function syncAccentUI() {
+  $("[data-solids]").innerHTML = ACCENT_SOLIDS.map(swatchHtml).join("");
+  $("[data-gradients]").innerHTML = ACCENT_GRADIENTS.map(swatchHtml).join("");
+  $("#accent-current").textContent = accentLabel();
+  // 自訂色塊先帶目前的顏色,打開系統調色盤時才不會從黑色開始調
+  $("#accent-custom").value =
+    isHex(state.accent) ? state.accent : (accentPreset(state.accent)?.color || ACCENT_SOLIDS[0].color);
+}
+
+function saveAccent() {
+  try { localStorage.setItem(ACCENT_KEY, state.accent); }
+  catch { /* 無痕模式存不了,顏色這次還是會生效,只是下次要重選 */ }
+}
+
+function showAccentMenu(open) {
+  show($("#accent-menu"), open);
+  $("#btn-accent").setAttribute("aria-expanded", String(open));
+}
+
+$("#btn-accent").addEventListener("click", (e) => {
+  e.stopPropagation();
+  showAccentMenu($("#accent-menu").hidden);
+});
+$("#accent-menu").addEventListener("click", (e) => {
+  // 在選單裡面點不該把選單關掉(挑顏色常常要試好幾個)
+  e.stopPropagation();
+  const sw = e.target.closest("[data-accent]");
+  if (!sw) return;
+  applyAccent(sw.dataset.accent);
+  saveAccent();
+});
+// 拖曳系統調色盤時就即時套用,看得到才好挑
+$("#accent-custom").addEventListener("input", (e) => {
+  applyAccent(e.target.value);
+  saveAccent();
+});
+$("#accent-reset").addEventListener("click", () => { applyAccent(""); saveAccent(); });
+$("#accent-done").addEventListener("click", () => {
+  showAccentMenu(false);
+  $("#btn-accent").focus();
+});
+
+try { applyAccent(localStorage.getItem(ACCENT_KEY) || ""); }
+catch { applyAccent(""); }
+
 // 點別的地方或按 Esc 就收起來
-document.addEventListener("click", () => showSortMenu(false));
+document.addEventListener("click", () => { showSortMenu(false); showAccentMenu(false); });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("#sort-menu").hidden) {
+  if (e.key !== "Escape") return;
+  if (!$("#sort-menu").hidden) {
     showSortMenu(false);
     $("#btn-sort").focus();
+  }
+  if (!$("#accent-menu").hidden) {
+    showAccentMenu(false);
+    $("#btn-accent").focus();
   }
 });
 

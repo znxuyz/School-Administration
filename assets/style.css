@@ -71,6 +71,35 @@
   }
 }
 
+/* 手動選深色時套同一組色票(上面那段只在系統偏好深色時生效) */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #101319;
+    --page: #07080a;
+    --card-bg: linear-gradient(180deg, #101319, #0c0e12);
+    --page-glow: radial-gradient(1200px 600px at 15% -10%, #101826 0%, var(--page) 60%);
+    --text-primary: #e8eaed;
+    --text-secondary: #b6bcc4;
+    --text-muted: #8a9099;
+    --hairline: #1c2027;
+    --border: #23272f;
+    --field-bg: #12151a;
+
+    --accent: #3987e5;
+    --accent-strong: #86b6ef;
+    --accent-track: #184f95;
+    --accent-wash: #14273f;
+
+    --top-bg: rgba(24, 24, 22, .55);
+    --top-sheen: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, 0) 62%);
+    --top-hair: rgba(255, 255, 255, .07);
+
+    --good-track: #123d12;
+    --critical-track: #4a1c1c;
+    --warning-track: #4a3a10;
+    --shadow: none;
+}
+
 * { box-sizing: border-box; }
 
 /* .center 等 display 規則會蓋掉瀏覽器預設的 [hidden]{display:none},必須補強 */
@@ -230,11 +259,29 @@ p.muted { margin: 0 0 .8em; }
   box-shadow: inset 0 0 0 1px var(--accent-track);
 }
 .user-box { display: flex; align-items: center; gap: 10px; }
+.btn-theme {
+  font: inherit; font-size: .95rem; line-height: 1;
+  width: 38px; height: 38px; padding: 0;
+  display: grid; place-items: center;
+  background: var(--surface-1); color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+.btn-theme:hover { color: var(--text-primary); border-color: var(--text-muted); }
 .user-name { color: var(--text-secondary); font-size: .9rem; }
 .app-version { color: var(--text-muted); font-size: .78rem; letter-spacing: .02em; }
 
-.panel-head { margin-bottom: 18px; }
-.panel-head h2 { margin-bottom: .25em; }
+.panel-head { margin-bottom: 22px; }
+.panel-head h2 {
+  margin: 0 0 .2em;
+  font-size: 1.85rem; font-weight: 500; letter-spacing: -.01em;
+}
+/* 標題上方的等寬體小標,給每個分頁一個定位 */
+.panel-kicker {
+  display: block; margin-bottom: 8px;
+  font-family: var(--mono); font-size: .68rem;
+  letter-spacing: .18em; color: var(--accent);
+}
+.panel-head p.muted { max-width: 62ch; font-size: .93rem; }
 
 /* ---------- 按鈕 ---------- */
 .btn {
@@ -284,16 +331,14 @@ textarea { resize: vertical; }
 .stat {
   display: block; width: 100%; text-align: left;
   font: inherit; cursor: pointer; min-height: 84px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
+  /* 邊框與圓角交給 .stat-row 統一處理 —— 每塊自己再畫一次就會變回獨立小卡 */
+  background: var(--surface-1); border: 0;
+  padding: 16px 18px;
   color: var(--text-primary);
 }
-.stat:hover { border-color: var(--text-muted); }
-.stat[aria-pressed="true"] {
-  border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
-}
+.stat:hover { background: var(--accent-wash); }
+/* 選中用內描邊,不用 border:border 會把 1px 的分隔線推開造成錯位 */
+.stat[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
 .stat-label {
   display: flex; align-items: center; gap: 6px;
   font-size: .85rem; color: var(--text-secondary);
@@ -830,7 +875,7 @@ textarea { resize: vertical; }
   .user-box { gap: 8px; }
   .stat { padding: 11px 13px; }
   .stat-value { font-size: 1.6rem; }
-  .stat-row { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
+  .stat-row { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
   .filter-box > summary { display: block; }
   /* 手機的格子放不下文字,只留色點,詳細內容點日期後在下方看 */
   .cal-grid { --cal-cell-h: 58px; }

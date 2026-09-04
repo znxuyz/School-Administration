@@ -16,10 +16,10 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=31";
+} from "./config.js?v=32";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker } from "./theme.js?v=31";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=32";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1091,6 +1091,7 @@ function initSelects() {
   fillSelect($("#member-role"), ROLES.map((r) => [r.id, r.label]));
 }
 initSelects();
+initThemeToggle();                             // 深/淺色切換(內部會呼叫 applyAccent)
 initAccentPicker();                            // 讀回上次選的主題色並掛上選色面板
 $("#app-version").textContent = APP_VERSION;   // 單字代號當版本號,由 ./bump.sh 換下一個
 

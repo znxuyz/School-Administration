@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------
 
 const STORE_KEY = "admin-tracker:accent";
+const THEME_KEY = "admin-tracker:theme";
 
 /** 單色。deep 是 hover 用的深階,ink 是壓在主色上的文字色。 */
 export const ACCENT_SOLIDS = [
@@ -71,7 +72,58 @@ function luminance(rgb) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-const isDarkMode = () => window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+const systemPrefersDark = () => !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+
+/** "dark" | "light" | "" (跟隨系統) */
+function readTheme() {
+  try { return localStorage.getItem(THEME_KEY) || ""; } catch { return ""; }
+}
+
+/** 目前實際生效的模式 */
+function effectiveTheme() {
+  const saved = readTheme();
+  return saved || (systemPrefersDark() ? "dark" : "light");
+}
+
+const isDarkMode = () => effectiveTheme() === "dark";
+
+/**
+ * CSS 的深色是寫在 @media (prefers-color-scheme: dark) 裡、加上
+ * :root:not([data-theme="light"]) 這個條件。所以:
+ *   選淺色 → 掛 data-theme="light",擋掉整段深色規則
+ *   選深色 → 掛 data-theme="dark",另有一段對應規則接手
+ * 兩個都不掛就回到跟隨系統。
+ */
+function applyTheme() {
+  const saved = readTheme();
+  const root = document.documentElement;
+  if (saved) root.setAttribute("data-theme", saved);
+  else root.removeAttribute("data-theme");
+
+  const btn = document.querySelector("#btn-theme");
+  if (btn) {
+    const dark = isDarkMode();
+    btn.textContent = dark ? "☀" : "☾";
+    btn.title = dark ? "切換成淺色" : "切換成深色";
+  }
+  // 主色的色階跟著模式重算(深色底下的 track 比淺色深很多)
+  applyAccent();
+}
+
+export function initThemeToggle() {
+  applyTheme();
+  const btn = document.querySelector("#btn-theme");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      const next = isDarkMode() ? "light" : "dark";
+      try { localStorage.setItem(THEME_KEY, next); } catch { /* 無痕模式:當次仍生效 */ }
+      applyTheme();
+    });
+  }
+  // 沒有自己選過的人,跟著系統一起換
+  window.matchMedia?.("(prefers-color-scheme: dark)")
+    .addEventListener?.("change", () => { if (!readTheme()) applyTheme(); });
+}
 
 /**
  * 淺色底上，醒色系的主色（琥珀橙、金黃）当小字用會不夠對比。
@@ -220,6 +272,4 @@ export function initAccentPicker() {
     if (e.key === "Escape" && !menu.hidden) { showMenu(false); btn.focus(); }
   });
 
-  // 系統在淺色/深色之間切換時,色階要重算(深色底下的 track 比淺色深很多)
-  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyAccent);
 }

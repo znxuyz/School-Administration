@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=31">
+<link rel="stylesheet" href="assets/style.css?v=32">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -93,6 +93,8 @@
         <button class="tab admin-only" role="tab" data-tab="members" hidden>成員管理</button>
       </nav>
       <div class="user-box">
+        <button id="btn-theme" class="btn-theme" type="button"
+                title="切換深色/淺色" aria-label="切換深色或淺色介面"></button>
         <span class="user-name" id="user-name"></span>
         <span class="app-version" id="app-version" title="程式版本,回報問題時請附上"></span>
         <button id="btn-signout" class="btn btn-ghost btn-sm">登出</button>
@@ -120,6 +122,7 @@
     <!-- 承辦工作(登入後的預設畫面) -->
     <section id="panel-mine" class="panel">
       <div class="panel-head">
+        <span class="panel-kicker">MY WORKLOAD</span>
         <h2>承辦工作</h2>
         <p class="muted">你自己承辦的計畫。在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度與公文流向。</p>
       </div>
@@ -132,6 +135,7 @@
     <!-- 行事曆 -->
     <section id="panel-calendar" class="panel" hidden>
       <div class="panel-head">
+        <span class="panel-kicker">CALENDAR</span>
         <h2>行事曆</h2>
         <p class="muted">用月曆看哪個月要開始、結束、送結算,一眼掌握該月的行政節奏。</p>
       </div>
@@ -152,6 +156,7 @@
     <!-- 已結案 -->
     <section id="panel-closed" class="panel" hidden>
       <div class="panel-head">
+        <span class="panel-kicker">ARCHIVE</span>
         <h2>已結案</h2>
         <p class="muted">
           全部步驟都完成的計畫會自動收到這裡,<strong>依結案日期由新到舊</strong>。
@@ -166,6 +171,7 @@
     <!-- 處室總覽 -->
     <section id="panel-dashboard" class="panel" hidden>
       <div class="panel-head">
+        <span class="panel-kicker">DEPARTMENT BOARD</span>
         <h2 id="dashboard-title">行政工作總覽</h2>
         <p class="muted" id="dashboard-desc">載入中…</p>
       </div>
@@ -188,6 +194,7 @@
     <!-- 搜尋 -->
     <section id="panel-search" class="panel" hidden>
       <div class="panel-head">
+        <span class="panel-kicker">SEARCH</span>
         <h2>搜尋</h2>
         <p class="muted">
           關鍵字會比對計畫名稱、備註、承辦人,以及<strong>每個步驟的名稱與備註</strong>。
@@ -255,6 +262,7 @@
     <!-- 成員管理 -->
     <section id="panel-members" class="panel" hidden>
       <div class="panel-head">
+        <span class="panel-kicker">MEMBERS</span>
         <h2>成員管理</h2>
         <p class="muted">
           只有名單內的 Email 能夠登入系統。新增後請通知該位老師使用<strong>同一個 Google 帳號</strong>登入。
@@ -454,6 +462,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=31"></script>
+<script type="module" src="assets/app.js?v=32"></script>
 </body>
 </html>

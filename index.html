@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=32">
+<link rel="stylesheet" href="assets/style.css?v=33">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -102,19 +102,19 @@
     </div>
   </header>
 
-  <!-- 常駐在畫面左側的快捷鈕。捲到清單哪裡都按得到,不用再滑回最上面。
-       只在會列出計畫的三個分頁出現(承辦工作、處室總覽、搜尋)。 -->
+  <!-- 排序與新增。setTab() 會把整組搬進當前分頁標題右邊的插槽,
+       所以只有一份、事件也只綁一次。只在會列計畫的三個分頁出現。 -->
   <div class="fab-rail" id="fab-rail" hidden>
-    <button id="btn-new-plan" class="fab fab-primary" title="新增計畫" aria-label="新增計畫">
-      <span aria-hidden="true">＋</span>
-    </button>
     <div class="fab-wrap">
-      <button id="btn-sort" class="fab" title="排序方式" aria-label="排序方式"
+      <button id="btn-sort" class="btn" title="排序方式" aria-label="排序方式"
               aria-haspopup="true" aria-expanded="false" aria-controls="sort-menu">
-        <span aria-hidden="true">⇅</span>
+        <span aria-hidden="true">⇅</span> <span id="sort-label">排序</span>
       </button>
       <div id="sort-menu" class="fab-menu" role="menu" aria-label="排序方式" hidden></div>
     </div>
+    <button id="btn-new-plan" class="btn btn-primary" title="新增計畫">
+      <span aria-hidden="true">＋</span> 新增計畫
+    </button>
   </div>
 
   <main class="wrap">
@@ -122,9 +122,12 @@
     <!-- 承辦工作(登入後的預設畫面) -->
     <section id="panel-mine" class="panel">
       <div class="panel-head">
-        <span class="panel-kicker">MY WORKLOAD</span>
-        <h2>承辦工作</h2>
-        <p class="muted">你自己承辦的計畫。在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度與公文流向。</p>
+        <div class="panel-lead">
+          <span class="panel-kicker">MY WORKLOAD</span>
+          <h2>承辦工作</h2>
+          <p class="muted">你自己承辦的計畫。在這裡新增計畫、拆解執行步驟,並隨時更新每個步驟的進度與公文流向。</p>
+        </div>
+        <div class="panel-actions" data-action-slot></div>
       </div>
 
       <div class="stat-row" id="mine-stat-row"></div>
@@ -171,9 +174,12 @@
     <!-- 處室總覽 -->
     <section id="panel-dashboard" class="panel" hidden>
       <div class="panel-head">
-        <span class="panel-kicker">DEPARTMENT BOARD</span>
-        <h2 id="dashboard-title">行政工作總覽</h2>
-        <p class="muted" id="dashboard-desc">載入中…</p>
+        <div class="panel-lead">
+          <span class="panel-kicker">DEPARTMENT BOARD</span>
+          <h2 id="dashboard-title">行政工作總覽</h2>
+          <p class="muted" id="dashboard-desc">載入中…</p>
+        </div>
+        <div class="panel-actions" data-action-slot></div>
       </div>
 
       <div class="stat-row" id="stat-row"></div>
@@ -194,13 +200,16 @@
     <!-- 搜尋 -->
     <section id="panel-search" class="panel" hidden>
       <div class="panel-head">
-        <span class="panel-kicker">SEARCH</span>
-        <h2>搜尋</h2>
-        <p class="muted">
-          關鍵字會比對計畫名稱、備註、承辦人,以及<strong>每個步驟的名稱與備註</strong>。
-          也可以只用下方的條件找,不一定要打字。這裡<strong>不受「處室總覽」的學年度限制</strong>,
-          往年的舊計畫一樣找得到。
-        </p>
+        <div class="panel-lead">
+          <span class="panel-kicker">SEARCH</span>
+          <h2>搜尋</h2>
+          <p class="muted">
+            關鍵字會比對計畫名稱、備註、承辦人,以及<strong>每個步驟的名稱與備註</strong>。
+            也可以只用下方的條件找,不一定要打字。這裡<strong>不受「處室總覽」的學年度限制</strong>,
+            往年的舊計畫一樣找得到。
+          </p>
+        </div>
+        <div class="panel-actions" data-action-slot></div>
       </div>
 
       <label class="field search-field">
@@ -462,6 +471,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=32"></script>
+<script type="module" src="assets/app.js?v=33"></script>
 </body>
 </html>

@@ -24,6 +24,9 @@
   --accent-wash: #eaf2fd;
 
   /* 頂欄玻璃:比卡片表面更透,讓捲動的內容透上來 */
+  /* 未完成的軌道用中性灰,不用主色淺階:主色淺階會讓「還沒做」看起來像「在做」 */
+  --track: #e8e8e3;
+
   --top-bg: rgba(252, 252, 251, .58);
   --top-sheen: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 62%);
   --top-hair: rgba(255, 255, 255, .7);
@@ -60,6 +63,8 @@
     --accent-track: #184f95;
     --accent-wash: #14273f;
 
+    --track: #1e222a;
+
     --top-bg: rgba(24, 24, 22, .55);
     --top-sheen: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, 0) 62%);
     --top-hair: rgba(255, 255, 255, .07);
@@ -89,6 +94,8 @@
     --accent-strong: #86b6ef;
     --accent-track: #184f95;
     --accent-wash: #14273f;
+
+    --track: #1e222a;
 
     --top-bg: rgba(24, 24, 22, .55);
     --top-sheen: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, 0) 62%);
@@ -138,36 +145,16 @@ p.muted { margin: 0 0 .8em; }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
 
 /* ---------- 左側浮動快捷鈕 ---------- */
-/* 計畫清單很長,按鈕放在頁首就得先捲回最上面才按得到。
-   改成固定在畫面左邊,捲到哪裡都在同一個位置。 */
+/* 排序與新增放在分頁標題右側(setTab 會把這一組搬進當前分頁的插槽)。
+   只有一份,所以事件也只綁一次。 */
 .fab-rail {
-  position: fixed; z-index: 30;
-  /* 螢幕夠寬時停在內容左邊的空白處(內容半寬 590 + 按鈕與間距);
-     窄一點就退到左邊界,靠下面的 media query 改成貼著畫面底部。 */
-  left: max(14px, calc(50% - 660px));
-  top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; align-items: center; gap: 8px;
 }
-.fab {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: grid; place-items: center;
-  font: inherit; font-size: 1.35rem; line-height: 1;
-  background: var(--surface-1); color: var(--text-primary);
-  border: 1px solid var(--border); cursor: pointer;
-  /* 浮在內容上面,要有陰影才看得出層次(深色模式的 --shadow 是 none) */
-  box-shadow: 0 4px 16px rgba(11, 11, 11, .18);
-}
-.fab:hover { background: var(--accent-wash); }
-.fab-primary {
-  background: var(--accent); color: #fff;
-  border-color: transparent; font-size: 1.6rem;
-}
-.fab-primary:hover { background: var(--accent-strong); }
-
 .fab-wrap { position: relative; }
+/* 選單掛在排序鈕正下方、向右對齊 */
 .fab-menu {
-  position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-  min-width: 172px; padding: 6px;
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 172px; padding: 6px; z-index: 30;
   background: var(--surface-1); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: 0 6px 20px rgba(11, 11, 11, .2);
   display: flex; flex-direction: column; gap: 2px;
@@ -184,21 +171,12 @@ p.muted { margin: 0 0 .8em; }
 .fab-menu button:hover { background: var(--accent-wash); }
 .fab-menu button[aria-checked="true"] { background: var(--accent-wash); font-weight: 600; }
 
-/* 螢幕不夠寬時左邊沒有空白可以站,改成貼著畫面左下角 */
-@media (max-width: 1240px) {
-  .fab-rail {
-    top: auto; transform: none;
-    bottom: calc(18px + env(safe-area-inset-bottom));
-  }
-  /* 選單往上開,免得超出畫面底部 */
-  .fab-menu { top: auto; bottom: 0; transform: none; }
-  /* 捲到最後一張卡片時不要被快捷鈕壓住 */
-  .wrap { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
-}
 @media (max-width: 720px) {
-  .fab { width: 48px; height: 48px; }
-  /* 提示條本來在正下方,會蓋住快捷鈕,往上讓一點 */
-  .toasts { bottom: calc(78px + env(safe-area-inset-bottom)); }
+  /* 窄螢幕上標題與按鈕上下排,按鈕撐滿一列比較好按 */
+  .panel-actions { width: 100%; }
+  .fab-rail { width: 100%; }
+  .fab-rail > .btn, .fab-wrap { flex: 1; }
+  .fab-wrap > .btn { width: 100%; }
 }
 
 .card {
@@ -270,7 +248,13 @@ p.muted { margin: 0 0 .8em; }
 .user-name { color: var(--text-secondary); font-size: .9rem; }
 .app-version { color: var(--text-muted); font-size: .78rem; letter-spacing: .02em; }
 
-.panel-head { margin-bottom: 22px; }
+.panel-head {
+  margin-bottom: 22px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+}
+.panel-lead { min-width: 0; }
+.panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .panel-head h2 {
   margin: 0 0 .2em;
   font-size: 1.85rem; font-weight: 500; letter-spacing: -.01em;
@@ -344,7 +328,7 @@ textarea { resize: vertical; }
   font-size: .85rem; color: var(--text-secondary);
 }
 .stat-value {
-  display: block; margin-top: 6px;
+  display: block; margin-top: 6px; font-variant-numeric: tabular-nums;
   font-family: var(--mono); font-size: 1.85rem; font-weight: 500; letter-spacing: -.02em;
 }
 /* 方點而非圓點 —— 跟等寬數字一起,整體更像儀器面板 */
@@ -400,6 +384,13 @@ textarea { resize: vertical; }
 .plan[data-status="stale"]::before   { background: linear-gradient(var(--status-warning), transparent); }
 .plan[data-status="done"]::before    { background: linear-gradient(var(--status-good), transparent); }
 
+.plan-lead { min-width: 0; flex: 1 1 380px; }
+/* 徽章與期限同一列,放在標題「上面」—— 先講狀態再講是哪一件事 */
+.plan-flags {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 10px;
+}
+.plan-deadline { font-size: .78rem; color: var(--text-muted); }
 .plan-top {
   display: flex; justify-content: space-between;
   align-items: flex-start; gap: 14px; flex-wrap: wrap;
@@ -409,7 +400,8 @@ textarea { resize: vertical; }
   display: flex; flex-wrap: wrap; gap: 4px 12px;
   color: var(--text-secondary); font-size: .85rem; margin-top: 3px;
 }
-.plan-actions { display: flex; gap: 6px; }
+/* 操作鈕靠右上,與標題同一行的高度起算 */
+.plan-actions { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
 /* 日期、金額、天數:等寬體讓多張卡片之間上下對齊 */
 .num { font-family: var(--mono); }
 
@@ -426,7 +418,20 @@ textarea { resize: vertical; }
 .badge-active   { background: var(--accent-wash); }
 
 /* 進度計:填色帶嚴重度,軌道為同色系較淺階 */
-.meter { margin-top: 12px; }
+/* 進度做成「左邊階段條、右邊大百分比」的兩欄,百分比是這張卡的結論 */
+.meter {
+  margin-top: 18px;
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 14px; align-items: center;
+}
+.meter-main { min-width: 0; }
+.meter-big {
+  text-align: right;
+  font-family: var(--mono); font-size: 1.6rem; font-weight: 500; letter-spacing: -.02em;
+  line-height: 1.1;
+}
+.meter-big small { font-size: .82rem; color: var(--text-muted); }
+.meter-steps { font-size: .68rem; color: var(--text-muted); text-align: right; }
 .meter-head {
   display: flex; justify-content: space-between;
   font-size: .85rem; color: var(--text-secondary); margin-bottom: 5px;
@@ -434,17 +439,16 @@ textarea { resize: vertical; }
 .meter-value { font-family: var(--mono); font-weight: 500; color: var(--text-primary); }
 .meter-track {
   height: 6px; border-radius: 3px; overflow: hidden;
-  background: var(--accent-track);
+  background: var(--track);
 }
 .meter-fill {
   height: 100%; border-radius: 0 3px 3px 0;
   background: var(--accent); transition: width .25s ease;
 }
-.plan[data-status="overdue"] .meter-track { background: var(--critical-track); }
+/* 未填滿的部分一律中性灰,只有填滿的那段帶狀態色 ——
+   軌道也染色的話,「已完成多少」的界線就看不清楚了 */
 .plan[data-status="overdue"] .meter-fill  { background: var(--status-critical); }
-.plan[data-status="stale"] .meter-track   { background: var(--warning-track); }
 .plan[data-status="stale"] .meter-fill    { background: var(--status-warning); }
-.plan[data-status="done"] .meter-track    { background: var(--good-track); }
 .plan[data-status="done"] .meter-fill     { background: var(--status-good); }
 
 .plan-note {
@@ -554,21 +558,30 @@ textarea { resize: vertical; }
 .step-loc { width: auto; min-width: 148px; font-size: .85rem; padding: 4px 8px; }
 
 /* 四階段進度:計畫 → 核定 → 執行 → 結案 */
+/* v2 的階段條:四段細線 + 下方一行文字。
+   原本是四個色塊,面積大、搶掉標題的注意力;細線一樣看得出走到哪一段。 */
 .stage-bar {
   display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 2px; margin-top: 12px;
+  gap: 3px; margin-top: 18px;
 }
+.stage-legend {
+  display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px;
+  font-family: var(--mono); font-size: .68rem; color: var(--text-muted);
+}
+.stage-legend .is-complete { color: var(--status-good); }
+.stage-legend .is-current { color: var(--accent); font-weight: 500; }
 .stage-cell {
-  display: flex; align-items: baseline; justify-content: center; gap: 6px;
-  padding: 6px 4px; font-size: .84rem;
-  background: var(--hairline); color: var(--text-secondary);
+  height: 5px; border-radius: 3px;
+  background: var(--track);
+  /* 文字移到下方的 .stage-legend,格子本身只當進度條 */
+  font-size: 0; overflow: hidden;
 }
-.stage-cell:first-child { border-radius: 6px 0 0 6px; }
+.stage-cell:first-child { border-radius: 3px; }
 .stage-name { letter-spacing: .02em; }
-.stage-cell:last-child { border-radius: 0 6px 6px 0; }
+.stage-cell:last-child { border-radius: 3px; }
 .stage-name { font-weight: 600; }
 .stage-count { font-family: var(--mono); font-size: .78rem; }
-.stage-cell.complete { background: var(--good-track); color: var(--text-primary); }
+.stage-cell.complete { background: var(--status-good); }
 .stage-cell.current  { background: var(--accent); color: #fff; }
 .stage-cell.blank    { opacity: .55; }
 
@@ -1123,7 +1136,7 @@ textarea { resize: vertical; }
   flex: 1 1 110px; min-width: 100px;
   padding: 12px 12px 0 0; position: relative;
   /* 上緣的線 = 這一段的軌道。走過的用主色,還沒送出的用虛線。 */
-  border-top: 2px solid var(--accent-track);
+  border-top: 2px solid var(--track);
 }
 .track-node:last-child { padding-right: 0; }
 .track-dot {

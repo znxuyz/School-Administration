@@ -16,10 +16,10 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=32";
+} from "./config.js?v=33";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=32";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=33";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -987,7 +987,14 @@ function setTab(tab) {
   for (const p of ["dashboard", "search", "calendar", "closed", "mine", "members"]) {
     show($(`#panel-${p}`), p === tab);
   }
-  show($("#fab-rail"), FAB_TABS.includes(tab));
+  // 排序與新增只有一份,搬進當前分頁標題右邊的插槽 ——
+  // 這樣按鈕永遠在標題旁邊,而事件處理器不必為每個分頁各綁一次。
+  const rail = $("#fab-rail");
+  show(rail, FAB_TABS.includes(tab));
+  if (FAB_TABS.includes(tab)) {
+    const slot = $(`#panel-${tab} [data-action-slot]`);
+    if (slot && rail.parentElement !== slot) slot.appendChild(rail);
+  }
   showSortMenu(false);
   if (tab === "calendar") renderCalendar();
   // 切到搜尋就直接可以打字,不用再點一次輸入框
@@ -1147,6 +1154,7 @@ function syncSortUI() {
       aria-checked="${s.id === state.sort}">${esc(s.label)}</button>`).join("");
   $("#btn-sort").title = `排序方式:${SORT_LABEL[state.sort]}`;
   $("#btn-sort").setAttribute("aria-label", `排序方式,目前是${SORT_LABEL[state.sort]}`);
+  $("#sort-label").textContent = `排序:${SORT_LABEL[state.sort]}`;
 }
 
 function setSort(mode) {
@@ -1287,37 +1295,46 @@ function renderStats(plans, target = "#stat-row") {
       <span class="stat-label">
         <span class="dot" style="background:${t.color}"></span>${esc(t.label)}
       </span>
-      <span class="stat-value">${t.value}</span>
+      <span class="stat-value">${String(t.value).padStart(2, "0")}</span>
     </button>`).join("");
 }
 
 /** 四階段進度條 */
+/**
+ * 四階段進度。格子本身只當細線進度條,名稱與件數列在下方一行,
+ * 目前所在的階段標「← 現在」——原本四個色塊面積太大,會搶掉標題。
+ */
 function stageBarHtml(plan) {
   const cur = currentStage(plan);
-  return `<div class="stage-bar" role="list" aria-label="計畫階段">` +
-    stageProgress(plan).map((r) => {
-      // 注意:修飾類別不要用 empty,會撞到「查無資料」佔位框的 .empty
-      const cls = r.total === 0 ? "blank" : r.complete ? "complete" : (cur && cur.id === r.id ? "current" : "pending");
-      const count = r.total ? `${r.done}/${r.total}` : "—";
-      return `
-        <div class="stage-cell ${cls}" role="listitem" title="${esc(r.hint)}">
-          <span class="stage-name">${esc(r.label)}</span>
-          <span class="stage-count">${count}</span>
-        </div>`;
-    }).join("") + `</div>`;
+  const rows = stageProgress(plan).map((r) => {
+    // 注意:修飾類別不要用 empty,會撞到「查無資料」佔位框的 .empty
+    const cls = r.total === 0 ? "blank" : r.complete ? "complete" : (cur && cur.id === r.id ? "current" : "pending");
+    return { ...r, cls, count: r.total ? `${r.done}/${r.total}` : "—" };
+  });
+
+  return `
+    <div class="stage-bar" role="list" aria-label="計畫階段">
+      ${rows.map((r) => `<div class="stage-cell ${r.cls}" role="listitem"
+             title="${esc(r.label)} ${r.count}・${esc(r.hint)}"><span class="stage-name">${esc(r.label)}</span></div>`).join("")}
+    </div>
+    <div class="stage-legend">
+      ${rows.map((r) => `<span class="${r.cls === "complete" ? "is-complete" : r.cls === "current" ? "is-current" : ""}">${esc(r.label)} ${r.count}${r.cls === "current" ? " ← 現在" : ""}</span>`).join("")}
+    </div>`;
 }
 
 function meterHtml(plan) {
   const { done, total, pct } = progressOf(plan);
   return `
     <div class="meter">
-      <div class="meter-head">
-        <span>${total ? `已完成 ${done} / ${total} 個步驟` : "尚未建立步驟"}</span>
-        <span class="meter-value">${pct}%</span>
+      <div class="meter-main">
+        <div class="meter-track" role="progressbar" aria-label="完成度"
+             aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+          <div class="meter-fill" style="width:${pct}%"></div>
+        </div>
       </div>
-      <div class="meter-track" role="progressbar" aria-label="完成度"
-           aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
-        <div class="meter-fill" style="width:${pct}%"></div>
+      <div>
+        <div class="meter-big">${pct}<small>%</small></div>
+        <div class="meter-steps num">${total ? `${done} / ${total} 步驟` : "尚未建立步驟"}</div>
       </div>
     </div>`;
 }
@@ -1653,6 +1670,9 @@ function planCard(plan, { editable }) {
        </div>`
     : "";
 
+  // 徽章旁邊直接講「還剩幾天 / 逾期幾天」—— 這是老師看一張卡片最先要知道的事
+  const deadlineNote = settlementText(plan);
+
   const trackRow = flowTrackHtml(plan);
 
   // 沒有流轉紀錄可畫軌道時(例如剛建立的計畫),仍用小標籤講在外文件,
@@ -1665,10 +1685,9 @@ function planCard(plan, { editable }) {
            d.days === null ? "" : `<span class="loc-days">${d.days} 天${d.stuck ? "・卡關" : ""}</span>`}
        </span>`).join("");
 
-  const outRow = (nextChip || outChips || legacy || driveChip)
+  const outRow = (nextChip || outChips || legacy)
     ? `<div class="loc-row">
          ${nextChip}
-         ${driveChip}
          ${outChips}
          ${legacy}
        </div>`
@@ -1680,7 +1699,6 @@ function planCard(plan, { editable }) {
     { t: `${plan.year} 學年度 ${TERM_LABEL[String(plan.term)] || ""}`.trim() },
     { t: plan.ownerName || plan.ownerEmail },
     { t: period, num: true },
-    { t: settlementText(plan), num: true },
     { t: plan.budget ? `核定 ${money(plan.budget)} 元` : "", num: true },
     { t: st === "done" && closedAt(plan) ? `結案 ${closedAt(plan)}` : "", num: true },
     // 最後一次更新的人:主任看同處室的計畫時才知道是誰動的
@@ -1690,15 +1708,18 @@ function planCard(plan, { editable }) {
   return `
     <article class="plan" data-status="${st}" data-id="${esc(plan.id)}">
       <div class="plan-top">
-        <div style="min-width:0">
+        <div class="plan-lead">
+          <div class="plan-flags">
+            <span class="badge ${meta.cls}"><span aria-hidden="true">${meta.icon}</span>${meta.label}</span>
+            ${plan.deletedAt ? `<span class="badge badge-stale"><span aria-hidden="true">🗑</span>已刪除 ${esc(plan.deletedAt)}${plan.deletedBy ? `・${esc(plan.deletedBy)}` : ""}</span>` : ""}
+            ${deadlineNote ? `<span class="plan-deadline num">${esc(deadlineNote)}</span>` : ""}
+          </div>
           <h3 class="plan-title">${esc(plan.title)}</h3>
           <div class="plan-meta">${bits.map((b) => `<span${b.num ? ' class="num"' : ""}>${esc(b.t)}</span>`).join("")}</div>
         </div>
         <div class="plan-actions">
-          <span class="badge ${meta.cls}"><span aria-hidden="true">${meta.icon}</span>${meta.label}</span>
-          ${plan.deletedAt ? `
-            <span class="badge badge-stale"><span aria-hidden="true">🗑</span>已刪除 ${esc(plan.deletedAt)}${plan.deletedBy ? `・${esc(plan.deletedBy)}` : ""}</span>
-            ${editable ? `
+          ${driveChip}
+          ${plan.deletedAt ? `${editable ? `
               <button class="btn btn-sm" data-act="restore" data-id="${esc(plan.id)}">還原</button>
               <button class="btn btn-sm btn-danger" data-act="purge" data-id="${esc(plan.id)}">永久刪除</button>` : ""}
           ` : `

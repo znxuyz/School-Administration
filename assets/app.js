@@ -16,10 +16,10 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=33";
+} from "./config.js?v=34";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=33";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=34";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -123,10 +123,10 @@ const livePlans = () => state.plans.filter((p) => !p.deletedAt);
 const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.id, s.label]));
 
 const STATUS_META = {
-  active:  { label: "進行中", icon: "▶", cls: "badge-active",  color: "var(--accent)" },
-  overdue: { label: "逾期",   icon: "⚠", cls: "badge-overdue", color: "var(--status-critical)" },
-  stale:   { label: "待更新", icon: "◷", cls: "badge-stale",   color: "var(--status-warning)" },
-  done:    { label: "已完成", icon: "✓", cls: "badge-done",    color: "var(--status-good)" }
+  active:  { label: "進行中", code: "ACTIVE",  icon: "▶", cls: "badge-active",  color: "var(--accent)" },
+  overdue: { label: "逾期",   code: "OVERDUE", icon: "⚠", cls: "badge-overdue", color: "var(--status-critical)" },
+  stale:   { label: "待更新", code: "STALE",   icon: "◷", cls: "badge-stale",   color: "var(--status-warning)" },
+  done:    { label: "已完成", code: "CLOSED",  icon: "✓", cls: "badge-done",    color: "var(--status-good)" }
 };
 
 /** 舊資料相容:執行結束日先看 endDate,沒有才回頭看早期的 dueDate */
@@ -1282,10 +1282,11 @@ function renderStats(plans, target = "#stat-row") {
   // 逾期與待更新是它的子集,拿來提醒哪幾件要先處理。
   const tiles = [
     { key: "open", label: "進行中", value: counts.total - counts.done, color: STATUS_META.active.color },
-    { key: "overdue", label: "逾期", value: counts.overdue, color: STATUS_META.overdue.color },
+    // 逾期與卡關的數字本身上色 —— 這兩個是要立刻處理的,只有小圓點不夠醒目
+    { key: "overdue", label: "逾期", value: counts.overdue, color: STATUS_META.overdue.color, tint: true },
     { key: "stale", label: "待更新", value: counts.stale, color: STATUS_META.stale.color },
     { key: "done", label: "已完成", value: counts.done, color: STATUS_META.done.color },
-    { key: "stuck", label: "公文卡關", value: stuck, color: "var(--status-serious)", separate: true }
+    { key: "stuck", label: "公文卡關", value: stuck, color: "var(--status-serious)", separate: true, tint: true }
   ];
 
   // 統計磚同時是篩選捷徑:點「逾期」就只看逾期的計畫
@@ -1295,7 +1296,7 @@ function renderStats(plans, target = "#stat-row") {
       <span class="stat-label">
         <span class="dot" style="background:${t.color}"></span>${esc(t.label)}
       </span>
-      <span class="stat-value">${String(t.value).padStart(2, "0")}</span>
+      <span class="stat-value" style="${t.tint ? `color:${t.color}` : ""}">${String(t.value).padStart(2, "0")}</span>
     </button>`).join("");
 }
 
@@ -1710,7 +1711,7 @@ function planCard(plan, { editable }) {
       <div class="plan-top">
         <div class="plan-lead">
           <div class="plan-flags">
-            <span class="badge ${meta.cls}"><span aria-hidden="true">${meta.icon}</span>${meta.label}</span>
+            <span class="badge ${meta.cls}" aria-label="${meta.label}">${meta.code}</span>
             ${plan.deletedAt ? `<span class="badge badge-stale"><span aria-hidden="true">🗑</span>已刪除 ${esc(plan.deletedAt)}${plan.deletedBy ? `・${esc(plan.deletedBy)}` : ""}</span>` : ""}
             ${deadlineNote ? `<span class="plan-deadline num">${esc(deadlineNote)}</span>` : ""}
           </div>

@@ -14,8 +14,8 @@ const THEME_KEY = "admin-tracker:theme";
 
 /** 單色。deep 是 hover 用的深階,ink 是壓在主色上的文字色。 */
 export const ACCENT_SOLIDS = [
-  { id: "blue",   name: "資訊藍", c: "#2a78d6", deep: "#1c5cab" },
   { id: "teal",   name: "湖水綠", c: "#12a594", deep: "#0c7d70" },
+  { id: "blue",   name: "資訊藍", c: "#2a78d6", deep: "#1c5cab" },
   { id: "green",  name: "松綠",   c: "#1a8a4c", deep: "#12683a" },
   { id: "lime",   name: "青檸",   c: "#5c8f0a", deep: "#446a07" },
   { id: "gold",   name: "金黃",   c: "#a97c00", deep: "#815e00" },
@@ -44,7 +44,7 @@ export const ACCENT_GRADIENTS = [
 ];
 
 const ALL = [...ACCENT_SOLIDS, ...ACCENT_GRADIENTS];
-const DEFAULT_ID = "blue";
+const DEFAULT_ID = "teal";
 
 /* ---------------- 色彩換算 ---------------- */
 
@@ -196,6 +196,7 @@ export function applyAccent() {
     !isDarkMode() && a.deep && a.id !== "custom" ? a.deep : r.strong);
   s.setProperty("--accent-track", r.track);
   s.setProperty("--accent-wash", r.wash);
+  // 深色模式的 wash 要夠暗才能當底色,淺色模式要夠亮 —— ramp() 已依模式算好
   s.setProperty("--accent-fill", a.fill);
   s.setProperty("--accent-ink", r.inkOnFill);   // 壓在漸層大色塊上
   s.setProperty("--accent-ink-flat", r.ink);    // 壓在壓深後的單色上

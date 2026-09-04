@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400;500;700&display=swap");
 /* ---------- 設計代幣 ---------- */
 :root {
   color-scheme: light;
@@ -17,9 +17,9 @@
   /* 數字用等寬體,期限與金額上下對齊才讀得快 */
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* 主色(sequential blue ramp) */
-  --accent: #2a78d6;
-  --accent-strong: #1c5cab;
+  /* 主色預設值。實際顏色由 theme.js 依老師選的配色寫進 :root,這裡只是還沒載入前的底色 */
+  --accent: #12a594;
+  --accent-strong: #0c7d70;
   --accent-track: #cde2fb;       /* 進度條未填滿:同色系較淺階 */
   --accent-wash: #eaf2fd;
 
@@ -35,6 +35,8 @@
   --status-good: #0ca30c;
   --status-warning: #fab219;
   --status-serious: #ec835a;
+  /* 卡關統計砥的淡底 */
+  --serious-wash: color-mix(in srgb, var(--status-serious) 8%, transparent);
   --status-critical: #d03b3b;
   --good-track: #d6f2d6;
   --critical-track: #f6dada;
@@ -58,9 +60,7 @@
     --border: #23272f;
     --field-bg: #12151a;
 
-    --accent: #3987e5;
-    --accent-strong: #86b6ef;
-    --accent-track: #184f95;
+    /* 主色與其色階一律由 theme.js 依選定顏色推算,這裡不再硬寫 */
     --accent-wash: #14273f;
 
     --track: #1e222a;
@@ -90,9 +90,7 @@
     --border: #23272f;
     --field-bg: #12151a;
 
-    --accent: #3987e5;
-    --accent-strong: #86b6ef;
-    --accent-track: #184f95;
+    /* 主色與其色階一律由 theme.js 依選定顏色推算,這裡不再硬寫 */
     --accent-wash: #14273f;
 
     --track: #1e222a;
@@ -116,7 +114,7 @@ body {
   margin: 0;
   background: var(--page-glow), var(--page);
   color: var(--text-primary);
-  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  font-family: "Noto Sans TC", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.6;
 }
@@ -321,6 +319,8 @@ textarea { resize: vertical; }
   color: var(--text-primary);
 }
 .stat:hover { background: var(--accent-wash); }
+/* 卡關那塊給一層暖色底 —— 它跟其他四個不同性質:那是「要去催」的清單 */
+.stat[data-stat="stuck"] { background: var(--serious-wash, var(--warning-track)); }
 /* 選中用內描邊,不用 border:border 會把 1px 的分隔線推開造成錯位 */
 .stat[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
 .stat-label {
@@ -406,16 +406,33 @@ textarea { resize: vertical; }
 .num { font-family: var(--mono); }
 
 .badge {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center;
   padding: 3px 9px; border-radius: 6px;
-  font-family: var(--mono); font-size: .72rem; letter-spacing: .08em;
-  white-space: nowrap; color: var(--text-primary);
-  border: 1px solid var(--border);
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .1em;
+  white-space: nowrap; border: 1px solid var(--border);
 }
-.badge-done     { background: var(--good-track); }
-.badge-overdue  { background: var(--critical-track); }
-.badge-stale    { background: var(--warning-track); }
-.badge-active   { background: var(--accent-wash); }
+/* 徐章用彩色文字 + 同色調的淡底與邊框，不用實色塊——
+   實色在深色模式下會重得把標題壓下去。 */
+.badge-done {
+  color: var(--status-good);
+  background: color-mix(in srgb, var(--status-good) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-good) 34%, transparent);
+}
+.badge-overdue {
+  color: var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-critical) 34%, transparent);
+}
+.badge-stale {
+  color: var(--status-warning);
+  background: color-mix(in srgb, var(--status-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-warning) 34%, transparent);
+}
+.badge-active {
+  color: var(--accent);
+  background: var(--accent-wash);
+  border-color: var(--accent-track);
+}
 
 /* 進度計:填色帶嚴重度,軌道為同色系較淺階 */
 /* 進度做成「左邊階段條、右邊大百分比」的兩欄,百分比是這張卡的結論 */

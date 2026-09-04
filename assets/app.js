@@ -14,10 +14,12 @@ import {
   APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
   UNIT_GROUPS, DEFAULT_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
-  ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS,
-  ACCENT_SOLIDS, ACCENT_GRADIENTS
+  ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=29";
+} from "./config.js?v=31";
+
+// 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
+import { initAccentPicker } from "./theme.js?v=31";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -686,7 +688,6 @@ const state = {
   cal: { y: new Date().getFullYear(), m: new Date().getMonth(), picked: "" },
   filters: defaultFilters(),
   sort: "due",       // 排序是檢視方式,不算篩選條件,所以不放在 filters 裡
-  accent: "",        // 主題色:調色盤的 id 或自訂的 #rrggbb,空字串 = 預設
   query: "",         // 搜尋分頁的關鍵字。搜尋不受學年度等條件限制,所以也不放在 filters
   unsubscribe: []
 };
@@ -1090,6 +1091,7 @@ function initSelects() {
   fillSelect($("#member-role"), ROLES.map((r) => [r.id, r.label]));
 }
 initSelects();
+initAccentPicker();                            // 讀回上次選的主題色並掛上選色面板
 $("#app-version").textContent = APP_VERSION;   // 單字代號當版本號,由 ./bump.sh 換下一個
 
 // 註冊 service worker,讓系統可以「加到主畫面」、沒網路時也開得起來。
@@ -1171,121 +1173,12 @@ $("#sort-menu").addEventListener("click", (e) => {
   showSortMenu(false);
   $("#btn-sort").focus();
 });
-/* ---------------- 主題色 ---------------- */
-
-// 記在這台裝置上,不分帳號 —— 配色和深淺模式一樣是「這台電腦看起來怎樣」的偏好,
-// 而且這樣一開啟就是對的顏色,不必等登入完才換,免得畫面閃一下。
-const ACCENT_KEY = "admin-tracker:accent";
-const ACCENT_ALL = [...ACCENT_SOLIDS, ...ACCENT_GRADIENTS];
-const themeMeta = document.querySelector('meta[name="theme-color"][media*="light"]');
-const DEFAULT_THEME_COLOR = themeMeta?.content || ACCENT_SOLIDS[0].color;
-
-const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v || "");
-const accentPreset = (id) => ACCENT_ALL.find((a) => a.id && a.id === id);
-
-/**
- * 疊在主色上的字色。選到亮黃、淺綠這種顏色時白字會看不見,
- * 所以照相對亮度決定要白字還是黑字(公式同 WCAG 的 relative luminance)。
- */
-function inkFor(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#0b0b0b" : "#fff";
-}
-
-/**
- * 套用主題色。value 可以是調色盤的 id,也可以是自訂的 #rrggbb;
- * 空字串代表回到預設 —— 要把行內樣式整個清掉,不能改寫成預設色,
- * 否則深色模式那組比較亮的預設值就被蓋住了。
- */
-function applyAccent(value) {
-  const root = document.documentElement.style;
-  const preset = accentPreset(value);
-  const color = preset ? preset.color : (isHex(value) ? value : "");
-
-  if (color) {
-    root.setProperty("--accent", color);
-    root.setProperty("--accent-fill", preset?.fill || color);
-    root.setProperty("--accent-ink", inkFor(color));
-  } else {
-    for (const p of ["--accent", "--accent-fill", "--accent-ink"]) root.removeProperty(p);
-  }
-  // 手機的網址列/狀態列顏色也跟著換
-  if (themeMeta) themeMeta.content = color || DEFAULT_THEME_COLOR;
-
-  state.accent = color ? value : "";
-  syncAccentUI();
-}
-
-function accentLabel() {
-  const p = accentPreset(state.accent);
-  if (p) return p.label;
-  return isHex(state.accent) ? `自訂 ${state.accent.toUpperCase()}` : ACCENT_SOLIDS[0].label;
-}
-
-const swatchHtml = (a) => `<button type="button" class="accent-swatch" data-accent="${a.id}"
-  style="--sw:${a.fill || a.color}" title="${esc(a.label)}" aria-label="${esc(a.label)}"
-  aria-pressed="${(a.id || "") === state.accent}"></button>`;
-
-function syncAccentUI() {
-  $("[data-solids]").innerHTML = ACCENT_SOLIDS.map(swatchHtml).join("");
-  $("[data-gradients]").innerHTML = ACCENT_GRADIENTS.map(swatchHtml).join("");
-  $("#accent-current").textContent = accentLabel();
-  // 自訂色塊先帶目前的顏色,打開系統調色盤時才不會從黑色開始調
-  $("#accent-custom").value =
-    isHex(state.accent) ? state.accent : (accentPreset(state.accent)?.color || ACCENT_SOLIDS[0].color);
-}
-
-function saveAccent() {
-  try { localStorage.setItem(ACCENT_KEY, state.accent); }
-  catch { /* 無痕模式存不了,顏色這次還是會生效,只是下次要重選 */ }
-}
-
-function showAccentMenu(open) {
-  show($("#accent-menu"), open);
-  $("#btn-accent").setAttribute("aria-expanded", String(open));
-}
-
-$("#btn-accent").addEventListener("click", (e) => {
-  e.stopPropagation();
-  showAccentMenu($("#accent-menu").hidden);
-});
-$("#accent-menu").addEventListener("click", (e) => {
-  // 在選單裡面點不該把選單關掉(挑顏色常常要試好幾個)
-  e.stopPropagation();
-  const sw = e.target.closest("[data-accent]");
-  if (!sw) return;
-  applyAccent(sw.dataset.accent);
-  saveAccent();
-});
-// 拖曳系統調色盤時就即時套用,看得到才好挑
-$("#accent-custom").addEventListener("input", (e) => {
-  applyAccent(e.target.value);
-  saveAccent();
-});
-$("#accent-reset").addEventListener("click", () => { applyAccent(""); saveAccent(); });
-$("#accent-done").addEventListener("click", () => {
-  showAccentMenu(false);
-  $("#btn-accent").focus();
-});
-
-try { applyAccent(localStorage.getItem(ACCENT_KEY) || ""); }
-catch { applyAccent(""); }
-
 // 點別的地方或按 Esc 就收起來
-document.addEventListener("click", () => { showSortMenu(false); showAccentMenu(false); });
+document.addEventListener("click", () => showSortMenu(false));
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if (!$("#sort-menu").hidden) {
+  if (e.key === "Escape" && !$("#sort-menu").hidden) {
     showSortMenu(false);
     $("#btn-sort").focus();
-  }
-  if (!$("#accent-menu").hidden) {
-    showAccentMenu(false);
-    $("#btn-accent").focus();
   }
 });
 
@@ -1632,6 +1525,82 @@ function flowHtml(plan, editable) {
     </div>`;
 }
 
+/**
+ * 公文流向軌道。把 plan.flow 的流轉紀錄接成一條橫向軌道:
+ * 走過的節點、現在停在哪、還沒送出的下一站。
+ *
+ * 為什麼不用 documentsOut() 的一排小標籤:那只講「現在在誰手上」,
+ * 看不出來已經跑過幾關、每一關卡了幾天。主任最常問的是
+ * 「這件卡在哪、卡多久了」,一條軌道比幾個標籤直接。
+ *
+ * 每一關的天數 = 這一筆到下一筆之間的日數;最後一筆(還在外面的那關)
+ * 算到今天為止,所以會一天一天長,超過 STUCK_DAYS 就標紅。
+ */
+function flowTrackHtml(plan) {
+  const flow = (plan.flow || [])
+    .filter((f) => f.to)
+    .slice()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!flow.length) return "";
+
+  // 現在還在外面的單位(可能有好幾個,取停最久的那個當「現在」)
+  const out = documentsOut(plan);
+  const liveUnit = out.length
+    ? out.slice().sort((a, b) => (b.days ?? 0) - (a.days ?? 0))[0]
+    : null;
+
+  const today = new Date();
+  const dayGap = (a, b) => {
+    const d1 = toDate(a), d2 = b ? toDate(b) : today;
+    if (!d1 || !d2) return null;
+    return Math.max(0, Math.round((d2 - d1) / 86400000));
+  };
+
+  // 起點是第一筆的 from(通常是承辦人手上),之後每一筆的 to 接成一站
+  const nodes = [];
+  if (flow[0].from) nodes.push({ unit: flow[0].from, days: null, state: "past", note: "送出" });
+  flow.forEach((f, i) => {
+    const next = flow[i + 1];
+    const days = dayGap(f.date, next ? next.date : null);
+    const isLast = !next;
+    const live = isLast && liveUnit && liveUnit.unit === f.to;
+    nodes.push({
+      unit: f.to,
+      days,
+      date: f.date,
+      state: live ? (liveUnit.stuck ? "stuck" : "live") : "past",
+      note: live ? (liveUnit.stuck ? "卡關" : "處理中") : "已轉出"
+    });
+  });
+
+  // 還沒送出的下一站:用下一批文件的位置推,沒有就不畫
+  const nxt = nextBundle(plan);
+  if (nxt && !liveUnit) nodes.push({ unit: "承辦人手上", days: null, state: "todo", note: "待送出" });
+
+  const worst = nodes.find((n) => n.state === "stuck");
+  const head = worst
+    ? `<span class="track-warn">⚠ 停在${esc(worst.unit)} ${worst.days} 天,已超過 ${STUCK_DAYS} 天門檻</span>`
+    : (liveUnit
+        ? `<span class="track-note">在外 ${liveUnit.days ?? 0} 天,正常</span>`
+        : `<span class="track-note">目前沒有在外的公文</span>`);
+
+  return `
+    <div class="flow-track">
+      <div class="track-head">
+        <span class="track-label">公文流向</span>
+        ${head}
+      </div>
+      <div class="track" role="list" aria-label="公文流向">
+        ${nodes.map((n) => `
+          <div class="track-node is-${n.state}" role="listitem">
+            <span class="track-dot" aria-hidden="true"></span>
+            <span class="track-unit">${esc(n.unit)}</span>
+            <span class="track-days num">${n.days === null ? esc(n.note) : `${n.days} 天・${esc(n.note)}`}</span>
+          </div>`).join("")}
+      </div>
+    </div>`;
+}
+
 function planCard(plan, { editable }) {
   const st = statusOf(plan);
   const meta = STATUS_META[st];
@@ -1683,37 +1652,46 @@ function planCard(plan, { editable }) {
        </div>`
     : "";
 
-  const outRow = (nextChip || out.length || legacy || driveChip)
+  const trackRow = flowTrackHtml(plan);
+
+  // 沒有流轉紀錄可畫軌道時(例如剛建立的計畫),仍用小標籤講在外文件,
+  // 不然那些資訊會整段消失。有軌道時就不重複列一次。
+  const outChips = trackRow
+    ? ""
+    : out.map((d) => `<span class="loc-chip${d.stuck ? " stuck" : ""}">
+         <span aria-hidden="true">${d.stuck ? "⚠" : "📄"}</span>${esc(d.title)}
+         <span aria-hidden="true">→</span> <b>${esc(d.unit)}</b>${
+           d.days === null ? "" : `<span class="loc-days">${d.days} 天${d.stuck ? "・卡關" : ""}</span>`}
+       </span>`).join("");
+
+  const outRow = (nextChip || outChips || legacy || driveChip)
     ? `<div class="loc-row">
          ${nextChip}
          ${driveChip}
-         ${out.map((d) => `<span class="loc-chip${d.stuck ? " stuck" : ""}">
-             <span aria-hidden="true">${d.stuck ? "⚠" : "📄"}</span>${esc(d.title)}
-             <span aria-hidden="true">→</span> <b>${esc(d.unit)}</b>${
-               d.days === null ? "" : `<span class="loc-days">${d.days} 天${d.stuck ? "・卡關" : ""}</span>`}
-           </span>`).join("")}
+         ${outChips}
          ${legacy}
        </div>`
     : "";
 
+  // num: true 的用等寬體。日期與金額散在各張卡片上,等寬才對得齊、掃得快。
   const bits = [
-    plan.dept,
-    `${plan.year} 學年度 ${TERM_LABEL[String(plan.term)] || ""}`.trim(),
-    plan.ownerName || plan.ownerEmail,
-    period,
-    settlementText(plan),
-    plan.budget ? `核定 ${money(plan.budget)} 元` : "",
-    st === "done" && closedAt(plan) ? `結案 ${closedAt(plan)}` : "",
+    { t: plan.dept },
+    { t: `${plan.year} 學年度 ${TERM_LABEL[String(plan.term)] || ""}`.trim() },
+    { t: plan.ownerName || plan.ownerEmail },
+    { t: period, num: true },
+    { t: settlementText(plan), num: true },
+    { t: plan.budget ? `核定 ${money(plan.budget)} 元` : "", num: true },
+    { t: st === "done" && closedAt(plan) ? `結案 ${closedAt(plan)}` : "", num: true },
     // 最後一次更新的人:主任看同處室的計畫時才知道是誰動的
-    relativeDays(toDate(plan.updatedAt)) + (plan.updatedByName ? `・${plan.updatedByName}` : "")
-  ].filter(Boolean);
+    { t: relativeDays(toDate(plan.updatedAt)) + (plan.updatedByName ? `・${plan.updatedByName}` : "") }
+  ].filter((b) => b.t);
 
   return `
     <article class="plan" data-status="${st}" data-id="${esc(plan.id)}">
       <div class="plan-top">
         <div style="min-width:0">
           <h3 class="plan-title">${esc(plan.title)}</h3>
-          <div class="plan-meta">${bits.map((b) => `<span>${esc(b)}</span>`).join("")}</div>
+          <div class="plan-meta">${bits.map((b) => `<span${b.num ? ' class="num"' : ""}>${esc(b.t)}</span>`).join("")}</div>
         </div>
         <div class="plan-actions">
           <span class="badge ${meta.cls}"><span aria-hidden="true">${meta.icon}</span>${meta.label}</span>
@@ -1733,6 +1711,7 @@ function planCard(plan, { editable }) {
       </div>
 
       ${recurRow}
+      ${trackRow}
       ${outRow}
       ${stageBarHtml(plan)}
       ${meterHtml(plan)}

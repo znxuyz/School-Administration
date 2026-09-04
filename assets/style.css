@@ -1,29 +1,32 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");
 /* ---------- 設計代幣 ---------- */
 :root {
   color-scheme: light;
 
-  --surface-1: #fcfcfb;          /* 卡片表面 */
-  --page: #f9f9f7;               /* 頁面底色 */
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --hairline: #e1e0d9;
-  --border: rgba(11, 11, 11, 0.10);
+  --surface-1: #ffffff;          /* 卡片表面 */
+  --page: #f7f7f5;               /* 頁面底色 */
+  /* 卡片用極淡的漸層,上緣比下緣亮一點,平面看起來才有厚度 */
+  --card-bg: linear-gradient(180deg, #ffffff, #fcfcfb);
+  --page-glow: radial-gradient(1200px 600px at 15% -10%, #e9eef6 0%, var(--page) 60%);
+  --text-primary: #14161a;
+  --text-secondary: #4b4f56;
+  --text-muted: #7c8088;
+  --hairline: #ecece7;
+  --border: #e3e3dd;
   --field-bg: #ffffff;
+  /* 數字用等寬體,期限與金額上下對齊才讀得快 */
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* 主色。老師可以按標題列的圖示自己換(見 app.js 的「主題色」)。
-     換色時只會蓋掉 --accent、--accent-fill、--accent-ink 三個,
-     底下的深階、淡底、進度條底色都由 --accent 用 color-mix 算出來 ——
-     混色的對象是會隨深淺模式變的 --page / --surface-1,
-     所以換一個顏色,兩種模式的配色就一起跟著對了,不用分別設定。 */
+  /* 主色(sequential blue ramp) */
   --accent: #2a78d6;
-  /* 只給「背景」用 —— 漸層主題會把這個換成 linear-gradient,
-     邊框、外框、文字那些不吃漸層的地方一律還是用 --accent */
-  --accent-fill: var(--accent);
-  --accent-ink: #fff;            /* 疊在主色上的字色。選到很亮的顏色時 JS 會改成深色 */
-  --accent-strong: color-mix(in srgb, var(--accent) 76%, #000);
-  --accent-track: color-mix(in srgb, var(--accent) 23%, var(--surface-1));
-  --accent-wash: color-mix(in srgb, var(--accent) 9%, var(--page));
+  --accent-strong: #1c5cab;
+  --accent-track: #cde2fb;       /* 進度條未填滿:同色系較淺階 */
+  --accent-wash: #eaf2fd;
+
+  /* 頂欄玻璃:比卡片表面更透,讓捲動的內容透上來 */
+  --top-bg: rgba(252, 252, 251, .58);
+  --top-sheen: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 62%);
+  --top-hair: rgba(255, 255, 255, .7);
 
   /* 狀態色(固定,不隨主題調整) */
   --status-good: #0ca30c;
@@ -41,21 +44,25 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface-1: #1a1a19;
-    --page: #0d0d0d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --hairline: #2c2c2a;
-    --border: rgba(255, 255, 255, 0.10);
-    --field-bg: #222220;
+    --surface-1: #101319;
+    --page: #07080a;
+    --card-bg: linear-gradient(180deg, #101319, #0c0e12);
+    --page-glow: radial-gradient(1200px 600px at 15% -10%, #101826 0%, var(--page) 60%);
+    --text-primary: #e8eaed;
+    --text-secondary: #b6bcc4;
+    --text-muted: #8a9099;
+    --hairline: #1c2027;
+    --border: #23272f;
+    --field-bg: #12151a;
 
-    /* 深色模式的主色亮一點,而且要「加白」才會更醒目(淺色模式是加黑),
-       底色深所以 track 與 wash 的混色比例也要拉高才看得出來 */
     --accent: #3987e5;
-    --accent-strong: color-mix(in srgb, var(--accent) 64%, #fff);
-    --accent-track: color-mix(in srgb, var(--accent) 55%, var(--surface-1));
-    --accent-wash: color-mix(in srgb, var(--accent) 20%, var(--page));
+    --accent-strong: #86b6ef;
+    --accent-track: #184f95;
+    --accent-wash: #14273f;
+
+    --top-bg: rgba(24, 24, 22, .55);
+    --top-sheen: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, 0) 62%);
+    --top-hair: rgba(255, 255, 255, .07);
 
     --good-track: #123d12;
     --critical-track: #4a1c1c;
@@ -71,7 +78,7 @@
 
 body {
   margin: 0;
-  background: var(--page);
+  background: var(--page-glow), var(--page);
   color: var(--text-primary);
   font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
   font-size: 15px;
@@ -123,7 +130,7 @@ p.muted { margin: 0 0 .8em; }
 }
 .fab:hover { background: var(--accent-wash); }
 .fab-primary {
-  background: var(--accent-fill); color: var(--accent-ink);
+  background: var(--accent); color: #fff;
   border-color: transparent; font-size: 1.6rem;
 }
 .fab-primary:hover { background: var(--accent-strong); }
@@ -186,71 +193,29 @@ p.muted { margin: 0 0 .8em; }
 
 /* ---------- 頂欄 ---------- */
 .topbar {
-  background: var(--surface-1);
+  /* 半透明玻璃:內容從下方透上來,上緣一道細高光做出厚度 */
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--top-hair), 0 1px 24px -12px rgba(0, 0, 0, .35);
+  background: var(--top-bg);
   border-bottom: 1px solid var(--hairline);
   position: sticky; top: 0; z-index: 20;
   /* 加到主畫面後沒有瀏覽器列,要自己避開瀏海與圓角 */
   padding-top: env(safe-area-inset-top);
 }
+/* 上緣高光疊在底色之上,用 ::before 疊,不影響內容排版 */
+.topbar::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: var(--top-sheen);
+}
 .topbar-inner {
+  position: relative;
   max-width: 1180px; margin: 0 auto;
   padding: 10px max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left));
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; position: relative; }
-/* 品牌圖示同時是換主題色的入口,所以它是一顆按鈕 —— 但看起來要跟原本的圖示一樣 */
-.brand-mark {
-  font-size: 1.15rem; line-height: 1;
-  font-family: inherit; background: none; border: 0; cursor: pointer;
-  padding: 4px; margin: -4px; border-radius: 8px; color: inherit;
-}
-.brand-mark:hover { background: var(--accent-wash); }
-
-/* ---------- 主題色 ---------- */
-.accent-menu {
-  position: absolute; top: calc(100% + 10px); left: -6px; z-index: 40;
-  width: 268px; padding: 12px;
-  background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 26px rgba(11, 11, 11, .22);
-  font-weight: 400;
-}
-.accent-head { display: flex; align-items: baseline; justify-content: space-between; }
-.accent-label { font-size: .78rem; color: var(--text-muted); }
-.accent-label-gap { display: block; margin-top: 12px; }
-.accent-current { font-size: .82rem; color: var(--text-secondary); }
-.accent-grid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 6px;
-}
-/* 漸層要看得出兩端的顏色,格子做寬一點 */
-.accent-grid-wide { grid-template-columns: repeat(3, 1fr); }
-.accent-swatch {
-  height: 30px; border-radius: 8px; cursor: pointer; padding: 0;
-  border: 1px solid var(--border); background: var(--sw);
-}
-.accent-grid-wide .accent-swatch { height: 26px; }
-.accent-swatch:hover { transform: scale(1.06); }
-/* 選中的那個描一圈,不用另外放勾勾(30px 的格子放不下) */
-.accent-swatch[aria-pressed="true"] {
-  outline: 2px solid var(--text-primary); outline-offset: 2px;
-}
-.accent-foot {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--hairline);
-}
-.accent-custom {
-  display: flex; align-items: center; gap: 6px;
-  font-size: .82rem; color: var(--text-secondary); margin-right: auto;
-}
-.accent-custom input[type="color"] {
-  width: 30px; height: 26px; padding: 0; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 6px; background: none;
-}
-
-@media (prefers-reduced-motion: reduce) { .accent-swatch:hover { transform: none; } }
-@media (max-width: 720px) {
-  /* 手機的標題列會換行,選單靠左邊界對齊比較不會超出畫面 */
-  .accent-menu { left: 0; width: min(268px, calc(100vw - 28px)); }
-}
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.brand-mark { font-size: 1.15rem; }
 .tabs { display: flex; gap: 4px; margin-right: auto; flex-wrap: wrap; }
 .tab {
   border: 0; background: none; cursor: pointer;
@@ -261,7 +226,8 @@ p.muted { margin: 0 0 .8em; }
 }
 .tab:hover { background: var(--accent-wash); color: var(--text-primary); }
 .tab[aria-selected="true"] {
-  background: var(--accent-fill); color: var(--accent-ink); font-weight: 600;
+  background: var(--accent-wash); color: var(--text-primary); font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--accent-track);
 }
 .user-box { display: flex; align-items: center; gap: 10px; }
 .user-name { color: var(--text-secondary); font-size: .9rem; }
@@ -279,7 +245,7 @@ p.muted { margin: 0 0 .8em; }
 }
 .btn:hover { border-color: var(--text-muted); }
 .btn-primary {
-  background: var(--accent-fill); color: var(--accent-ink); border-color: transparent; font-weight: 600;
+  background: var(--accent); color: #fff; border-color: transparent; font-weight: 600;
 }
 .btn-primary:hover { background: var(--accent-strong); }
 .btn-ghost { background: none; border-color: transparent; color: var(--text-secondary); }
@@ -306,13 +272,18 @@ textarea { resize: vertical; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 
 /* ---------- 統計磚 ---------- */
+/* 五個統計磚連成一片儀表列 —— 用 1px 的 gap 露出底色當分隔線,
+   比每塊各自加邊框乾淨,也不會在磚與磚之間出現雙線。 */
 .stat-row {
-  display: grid; gap: 12px; margin-bottom: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  display: grid; gap: 1px; margin-bottom: 26px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: 14px; overflow: hidden;
 }
 .stat {
   display: block; width: 100%; text-align: left;
-  font: inherit; cursor: pointer;
+  font: inherit; cursor: pointer; min-height: 84px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -327,8 +298,12 @@ textarea { resize: vertical; }
   display: flex; align-items: center; gap: 6px;
   font-size: .85rem; color: var(--text-secondary);
 }
-.stat-value { display: block; font-size: 1.9rem; font-weight: 600; letter-spacing: -.02em; }
-.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.stat-value {
+  display: block; margin-top: 6px;
+  font-family: var(--mono); font-size: 1.85rem; font-weight: 500; letter-spacing: -.02em;
+}
+/* 方點而非圓點 —— 跟等寬數字一起,整體更像儀器面板 */
+.dot { width: 6px; height: 6px; border-radius: 2px; flex: none; }
 
 /* ---------- 篩選列 ---------- */
 /* 桌機一律展開,手機預設收起來,由 JS 控制 open 屬性 */
@@ -360,35 +335,45 @@ textarea { resize: vertical; }
 .filters .btn { margin-bottom: 1px; }
 
 /* ---------- 計畫卡 ---------- */
-.plan-list { display: flex; flex-direction: column; gap: 12px; }
+.plan-list { display: flex; flex-direction: column; gap: 14px; }
 .plan {
-  background: var(--surface-1);
+  position: relative;
+  background: var(--card-bg);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius);
+  border-radius: 16px;
   box-shadow: var(--shadow);
-  padding: 16px 18px;
+  padding: 20px 22px;
 }
-.plan[data-status="overdue"] { border-left-color: var(--status-critical); }
-.plan[data-status="stale"]   { border-left-color: var(--status-warning); }
-.plan[data-status="done"]    { border-left-color: var(--status-good); }
+/* 狀態色條改用 ::before 內縮,不像 border-left 那樣頂到圓角把角切平。
+   漸層往下淡出,讓它像一道光而不是一條粗邊。 */
+.plan::before {
+  content: ""; position: absolute; left: 0; top: 18px; bottom: 18px;
+  width: 2px; border-radius: 2px;
+  background: linear-gradient(var(--accent), transparent);
+}
+.plan[data-status="overdue"]::before { background: linear-gradient(var(--status-critical), transparent); }
+.plan[data-status="stale"]::before   { background: linear-gradient(var(--status-warning), transparent); }
+.plan[data-status="done"]::before    { background: linear-gradient(var(--status-good), transparent); }
 
 .plan-top {
   display: flex; justify-content: space-between;
   align-items: flex-start; gap: 14px; flex-wrap: wrap;
 }
-.plan-title { font-size: 1.02rem; font-weight: 600; margin: 0; }
+.plan-title { font-size: 1.19rem; font-weight: 500; margin: 0; letter-spacing: -.01em; }
 .plan-meta {
   display: flex; flex-wrap: wrap; gap: 4px 12px;
   color: var(--text-secondary); font-size: .85rem; margin-top: 3px;
 }
 .plan-actions { display: flex; gap: 6px; }
+/* 日期、金額、天數:等寬體讓多張卡片之間上下對齊 */
+.num { font-family: var(--mono); }
 
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 999px;
-  font-size: .8rem; font-weight: 600; white-space: nowrap;
-  color: var(--text-primary);
+  padding: 3px 9px; border-radius: 6px;
+  font-family: var(--mono); font-size: .72rem; letter-spacing: .08em;
+  white-space: nowrap; color: var(--text-primary);
+  border: 1px solid var(--border);
 }
 .badge-done     { background: var(--good-track); }
 .badge-overdue  { background: var(--critical-track); }
@@ -401,14 +386,14 @@ textarea { resize: vertical; }
   display: flex; justify-content: space-between;
   font-size: .85rem; color: var(--text-secondary); margin-bottom: 5px;
 }
-.meter-value { font-weight: 600; color: var(--text-primary); }
+.meter-value { font-family: var(--mono); font-weight: 500; color: var(--text-primary); }
 .meter-track {
-  height: 8px; border-radius: 4px; overflow: hidden;
+  height: 6px; border-radius: 3px; overflow: hidden;
   background: var(--accent-track);
 }
 .meter-fill {
-  height: 100%; border-radius: 0 4px 4px 0;
-  background: var(--accent-fill); transition: width .25s ease;
+  height: 100%; border-radius: 0 3px 3px 0;
+  background: var(--accent); transition: width .25s ease;
 }
 .plan[data-status="overdue"] .meter-track { background: var(--critical-track); }
 .plan[data-status="overdue"] .meter-fill  { background: var(--status-critical); }
@@ -473,7 +458,7 @@ textarea { resize: vertical; }
 
 .next-chip {
   display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  background: var(--accent-fill); color: var(--accent-ink);
+  background: var(--accent-fill, var(--accent)); color: var(--accent-ink, #fff);
   border-radius: 999px; padding: 5px 13px;
   font-size: .86rem;
 }
@@ -534,11 +519,12 @@ textarea { resize: vertical; }
   background: var(--hairline); color: var(--text-secondary);
 }
 .stage-cell:first-child { border-radius: 6px 0 0 6px; }
+.stage-name { letter-spacing: .02em; }
 .stage-cell:last-child { border-radius: 0 6px 6px 0; }
 .stage-name { font-weight: 600; }
-.stage-count { font-variant-numeric: tabular-nums; font-size: .8rem; }
+.stage-count { font-family: var(--mono); font-size: .78rem; }
 .stage-cell.complete { background: var(--good-track); color: var(--text-primary); }
-.stage-cell.current  { background: var(--accent-fill); color: var(--accent-ink); }
+.stage-cell.current  { background: var(--accent); color: #fff; }
 .stage-cell.blank    { opacity: .55; }
 
 /* 步驟清單 */
@@ -683,7 +669,7 @@ textarea { resize: vertical; }
 .cal-cell.picked { box-shadow: inset 0 0 0 2px var(--accent); }
 .cal-day { font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .cal-cell.today .cal-day {
-  background: var(--accent-fill); color: var(--accent-ink); font-weight: 600;
+  background: var(--accent); color: #fff; font-weight: 600;
   border-radius: 999px; padding: 1px 7px; align-self: flex-start;
 }
 
@@ -978,4 +964,164 @@ textarea { resize: vertical; }
   .note-form { flex-wrap: wrap; }
   .note-form input { flex: 1 1 100%; }
   .note-form select { flex: 1; min-width: 0; }
+}
+
+/* ---------- 主題色選單(頂欄品牌圖示) ---------- */
+/* 面板要浮在頂欄上面,所以 .brand 當定位基準 */
+.brand { position: relative; }
+.brand-mark {
+  font: inherit; font-size: 1.15rem; line-height: 1;
+  width: 34px; height: 34px; padding: 0;
+  display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--accent-wash); color: var(--text-primary);
+  cursor: pointer;
+}
+.brand-mark:hover { border-color: var(--accent); }
+
+.accent-menu {
+  position: absolute; top: 42px; left: 0; z-index: 40;
+  width: 292px; padding: 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(11, 11, 11, .22);
+}
+.accent-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.accent-label {
+  font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+  color: var(--text-secondary);
+}
+.accent-label-gap { display: block; margin: 14px 0 8px; }
+.accent-current { font-size: .8rem; color: var(--text-muted); }
+
+.accent-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 8px; }
+.accent-grid-wide { grid-template-columns: repeat(2, 1fr); }
+
+.swatch {
+  width: 100%; aspect-ratio: 1; padding: 0;
+  border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer;
+}
+.swatch:hover { filter: brightness(1.12); }
+/* 選中的用外圈標示,不靠顏色本身辨識(選到淺色時看得見) */
+.swatch.on { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--text-primary); }
+.swatch-wide {
+  aspect-ratio: auto; height: 34px;
+  font: inherit; font-size: .76rem; color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+}
+
+.accent-foot {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.accent-custom {
+  display: flex; align-items: center; gap: 8px;
+  font-size: .82rem; color: var(--text-secondary); cursor: pointer;
+}
+.accent-custom input {
+  width: 44px; height: 32px; margin: 0; padding: 0;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--field-bg); cursor: pointer;
+}
+#accent-reset { margin-left: auto; }
+
+/* 漸層只用在大色塊:品牌圖示與主要按鈕 */
+/* 漸層只用在大色塊,字色用為原亮色配好的 --accent-ink */
+.brand-mark, .btn-primary, .fab-primary {
+  background-image: var(--accent-fill, none);
+  color: var(--accent-ink, #fff);
+}
+/* 壓深後的「實色主色底」用重算過的字色。
+   選中的分頁不在這裡 —— 它的底色已經改成淡底 --accent-wash,
+   套上為深色底算的字色會變成白字配近白底,整個看不見。
+   下一步膠囊也不在 —— 它吃的是 --accent-fill(可能是漸層),所以用 --accent-ink。 */
+.stage-cell.current, .cal-cell.today .cal-day {
+  color: var(--accent-ink-flat, #fff);
+}
+
+@media (max-width: 480px) {
+  /* 窄螢幕上面板貼齊畫面左緣,不要被切掉 */
+  .accent-menu { width: min(292px, calc(100vw - 28px)); }
+}
+
+/* backdrop-filter 沒支援時,毛玻璃只會變成一片半透明 —— 退回實色比較安全 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar { background: var(--surface-1); }
+  .topbar::before { display: none; }
+}
+
+/* ---------- 公文流向軌道 ---------- */
+/* 一排小標籤只講「現在在誰手上」,看不出跑過幾關、各卡幾天。
+   改成橫向軌道:每一站是一個節點,上緣的線代表那一段的狀態。 */
+.flow-track {
+  margin-top: 16px; padding: 14px 16px 12px;
+  background: var(--page);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
+.track-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.track-label {
+  font-family: var(--mono); font-size: .68rem;
+  letter-spacing: .14em; color: var(--text-muted);
+}
+.track-note { font-size: .8rem; color: var(--text-secondary); }
+.track-warn { font-size: .8rem; color: var(--status-serious); font-weight: 600; }
+
+/* 節點用 flex 平分寬度,窄螢幕自動換行成兩排 */
+.track { display: flex; align-items: stretch; flex-wrap: wrap; }
+.track-node {
+  flex: 1 1 110px; min-width: 100px;
+  padding: 12px 12px 0 0; position: relative;
+  /* 上緣的線 = 這一段的軌道。走過的用主色,還沒送出的用虛線。 */
+  border-top: 2px solid var(--accent-track);
+}
+.track-node:last-child { padding-right: 0; }
+.track-dot {
+  position: absolute; top: -6px; left: 0;
+  width: 10px; height: 10px; border-radius: 3px;
+  background: var(--accent);
+}
+.track-unit { display: block; font-size: .86rem; color: var(--text-secondary); }
+.track-days { display: block; font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
+
+.track-node.is-past .track-dot { background: var(--status-good); }
+.track-node.is-past { border-top-color: var(--good-track); }
+
+/* 現在停留的那一關要最顯眼:節點放大、加一圈光暈、單位名稱加深 */
+.track-node.is-live { border-top-color: var(--accent); }
+.track-node.is-live .track-dot {
+  width: 12px; height: 12px; top: -7px;
+  background: var(--accent); box-shadow: 0 0 0 4px var(--accent-wash);
+}
+.track-node.is-live .track-unit { color: var(--text-primary); font-weight: 500; }
+.track-node.is-live .track-days { color: var(--accent); }
+
+.track-node.is-stuck { border-top-color: var(--status-critical); }
+.track-node.is-stuck .track-dot {
+  width: 12px; height: 12px; top: -7px;
+  background: var(--status-critical);
+  box-shadow: 0 0 0 4px var(--critical-track);
+  animation: track-pulse 2.4s ease-in-out infinite;
+}
+.track-node.is-stuck .track-unit { color: var(--text-primary); font-weight: 600; }
+.track-node.is-stuck .track-days { color: var(--status-critical); font-weight: 600; }
+
+/* 還沒送出的下一站:虛線 + 空心點,表示「還沒發生」 */
+.track-node.is-todo { border-top: 2px dashed var(--border); }
+.track-node.is-todo .track-dot {
+  background: var(--page);
+  box-shadow: inset 0 0 0 2px var(--text-muted);
+}
+.track-node.is-todo .track-unit,
+.track-node.is-todo .track-days { color: var(--text-muted); }
+
+@keyframes track-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+/* 會暈眩的人把動畫關掉,卡關仍靠顏色與文字辨識 */
+@media (prefers-reduced-motion: reduce) {
+  .track-node.is-stuck .track-dot { animation: none; }
 }

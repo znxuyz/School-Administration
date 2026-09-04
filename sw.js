@@ -5,7 +5,7 @@
 // 網路優先:有網路一律拿最新的,順手更新快取;沒網路才拿快取墊檔。
 
 // 版本號請用 ./bump.sh 更新,不要手動改單一檔案
-const BUILD = "29";
+const BUILD = "31";
 const CACHE = `admin-tracker-${BUILD}`;
 
 // 首次安裝時先抓起來,離線也開得起來
@@ -16,6 +16,7 @@ const PRECACHE = [
   `./assets/style.css?v=${BUILD}`,
   `./assets/app.js?v=${BUILD}`,
   `./assets/config.js?v=${BUILD}`,
+  `./assets/theme.js?v=${BUILD}`,
   "./assets/icons/favicon.png",
   "./assets/icons/icon-192.png",
   "./assets/icons/icon-512.png"

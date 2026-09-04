@@ -4,8 +4,8 @@
 #   ./bump.sh          → 自動加一
 #   ./bump.sh 12       → 直接指定號碼
 #
-# 版本號要一起改的地方有五處(config.js、index.html 兩處、
-# app.js 的 config 匯入、sw.js),漏掉任何一處老師的瀏覽器
+# 版本號要一起改的地方有六處(config.js、index.html 兩處、
+# app.js 的 config 與 theme 匯入、sw.js),漏掉任何一處老師的瀏覽器
 # 就可能繼續用快取裡的舊程式。
 
 set -euo pipefail
@@ -22,6 +22,7 @@ fi
 sed -i "s/APP_BUILD = ${current}/APP_BUILD = ${next}/"                assets/config.js
 sed -i "s/?v=${current}\"/?v=${next}\"/g"                             index.html
 sed -i "s|\./config\.js?v=${current}\"|./config.js?v=${next}\"|"      assets/app.js
+sed -i "s|\./theme\.js?v=${current}\"|./theme.js?v=${next}\"|"        assets/app.js
 sed -i "s/const BUILD = \"${current}\"/const BUILD = \"${next}\"/"    sw.js
 
 # 代號直接讀改好的 config.js,和程式顯示的完全一致
@@ -31,5 +32,5 @@ echo "版本號 ${current} → ${next}(${code})"
 echo
 grep -n "APP_BUILD"      assets/config.js
 grep -n "?v="            index.html
-grep -n "config.js?v="   assets/app.js
+grep -n "\.js?v="        assets/app.js
 grep -n "const BUILD"    sw.js

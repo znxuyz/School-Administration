@@ -705,7 +705,11 @@ textarea { resize: vertical; }
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin-bottom: 12px;
 }
-.cal-title { font-size: 1.05rem; min-width: 8.5em; text-align: center; }
+/* 年月是數字,和卡片上的日期金額用同一套等寬體才對得齊 */
+.cal-title {
+  font-family: var(--mono); font-size: 1.05rem; font-weight: 500;
+  min-width: 9em; text-align: center;
+}
 .cal-summary { color: var(--text-secondary); font-size: .88rem; margin-left: auto; }
 
 .cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -719,14 +723,17 @@ textarea { resize: vertical; }
   /* 每一格都一樣高,月曆才不會因為某天項目多就整排變高。
      放得下的行數寫在 app.js 的 CAL_SLOTS,兩邊要一起改。 */
   --cal-cell-h: 96px;
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+  /* 和統計磚同一個做法:1px 的 gap 露出底色當分隔線,外框一個大圓角 */
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
   background: var(--hairline);
-  border: 1px solid var(--border); border-radius: var(--radius);
+  border: 1px solid var(--hairline); border-radius: 14px;
   overflow: hidden;
 }
+/* 星期列比照其他區塊的小標:等寬、拉開字距、比內容淡 */
 .cal-dow {
-  background: var(--surface-1); color: var(--text-secondary);
-  text-align: center; font-size: .8rem; font-weight: 600; padding: 7px 0;
+  background: var(--surface-1); color: var(--text-muted);
+  text-align: center; padding: 9px 0;
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .14em;
 }
 .cal-dow.weekend { color: var(--text-muted); }
 
@@ -742,7 +749,7 @@ textarea { resize: vertical; }
 .cal-cell.outside { opacity: .38; }
 .cal-cell.weekend { background: var(--page); }
 .cal-cell.picked { box-shadow: inset 0 0 0 2px var(--accent); }
-.cal-day { font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.cal-day { font-family: var(--mono); font-size: .8rem; color: var(--text-muted); }
 .cal-cell.today .cal-day {
   background: var(--accent); color: #fff; font-weight: 600;
   border-radius: 999px; padding: 1px 7px; align-self: flex-start;
@@ -775,11 +782,18 @@ textarea { resize: vertical; }
 .ho-row input { width: auto; margin: 0; accent-color: var(--accent); }
 .ho-title { font-weight: 600; }
 
-.cal-detail { margin-top: 14px; }
+/* 下方明細做成一塊,和卡片上的公文流向軌道同一個底 */
+.cal-detail:not(:empty) {
+  margin-top: 16px; padding: 14px 16px;
+  background: var(--page);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
 .cal-detail-head {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 6px;
 }
+.cal-detail-head strong { font-family: var(--mono); font-weight: 500; }
 .cal-list { list-style: none; margin: 0; padding: 0; }
 .cal-list li {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -787,23 +801,33 @@ textarea { resize: vertical; }
   font-size: .9rem;
 }
 .cal-list li:last-child { border-bottom: 0; }
-.cal-list-type { font-weight: 600; font-size: .82rem; }
-.cal-list-title { font-weight: 600; }
+/* 「開始 / 結束 / 送結算 / 記事」是分類標,不是內容 —— 用小標的樣子 */
+.cal-list-type {
+  font-family: var(--mono); font-size: .68rem;
+  letter-spacing: .1em; color: var(--text-muted);
+}
+.cal-list-title { font-weight: 500; }
 
 /* ---------- 表格 ---------- */
 .table-scroll { overflow-x: auto; }
 .table {
-  width: 100%; border-collapse: collapse;
+  width: 100%; border-collapse: separate; border-spacing: 0;
   background: var(--surface-1);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: .9rem;
+  border: 1px solid var(--hairline); border-radius: 14px;
+  font-size: .9rem; overflow: hidden;
 }
 .table th, .table td {
-  text-align: left; padding: 10px 12px;
+  text-align: left; padding: 12px 14px;
   border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
-.table th { color: var(--text-secondary); font-weight: 600; font-size: .85rem; }
+/* 欄位名和其他區塊的小標一致:等寬、拉開字距、比內容淡 */
+.table th {
+  font-family: var(--mono); font-size: .68rem; font-weight: 400;
+  letter-spacing: .14em; color: var(--text-muted);
+  padding-top: 11px; padding-bottom: 11px;
+}
+.table tbody tr:hover td { background: var(--accent-wash); }
 .table tbody tr:last-child td { border-bottom: 0; }
 
 /* ---------- 對話框 ---------- */

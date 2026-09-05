@@ -140,7 +140,7 @@ p.muted { margin: 0 0 .8em; }
   align-items: center; justify-content: center;
   padding: 24px; gap: 12px;
 }
-.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 32px 24px 120px; }
 
 /* ---------- 左側浮動快捷鈕 ---------- */
 /* 排序與新增放在分頁標題右側(setTab 會把這一組搬進當前分頁的插槽)。
@@ -215,16 +215,17 @@ p.muted { margin: 0 0 .8em; }
 }
 .topbar-inner {
   position: relative;
-  max-width: 1180px; margin: 0 auto;
+  max-width: 1240px; margin: 0 auto;
   padding: 10px max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left));
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .brand-mark { font-size: 1.15rem; }
-.tabs { display: flex; gap: 4px; margin-right: auto; flex-wrap: wrap; }
+.tabs { display: flex; gap: 2px; margin-right: auto; flex-wrap: wrap; }
 .tab {
   border: 0; background: none; cursor: pointer;
-  padding: 7px 14px; border-radius: 8px;
+  padding: 8px 14px; border-radius: 8px;
+  font-size: .875rem; min-height: 40px;
   font: inherit; color: var(--text-secondary);
   /* 分頁名稱不能被擠成直排,寧可換到第二行 */
   white-space: nowrap;
@@ -324,8 +325,8 @@ textarea { resize: vertical; }
 /* 選中用內描邊,不用 border:border 會把 1px 的分隔線推開造成錯位 */
 .stat[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
 .stat-label {
-  display: flex; align-items: center; gap: 6px;
-  font-size: .85rem; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 7px;
+  font-size: .75rem; letter-spacing: .04em; color: var(--text-secondary);
 }
 .stat-value {
   display: block; margin-top: 6px; font-variant-numeric: tabular-nums;
@@ -390,15 +391,15 @@ textarea { resize: vertical; }
   display: flex; align-items: center; gap: 10px;
   flex-wrap: wrap; margin-bottom: 10px;
 }
-.plan-deadline { font-size: .78rem; color: var(--text-muted); }
+.plan-deadline { font-size: .75rem; color: var(--text-muted); }
 .plan-top {
   display: flex; justify-content: space-between;
-  align-items: flex-start; gap: 14px; flex-wrap: wrap;
+  align-items: flex-start; gap: 18px; flex-wrap: wrap;
 }
 .plan-title { font-size: 1.19rem; font-weight: 500; margin: 0; letter-spacing: -.01em; }
 .plan-meta {
-  display: flex; flex-wrap: wrap; gap: 4px 12px;
-  color: var(--text-secondary); font-size: .85rem; margin-top: 3px;
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  color: var(--text-secondary); font-size: .82rem; margin-top: 7px;
 }
 /* 操作鈕靠右上,與標題同一行的高度起算 */
 .plan-actions { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
@@ -407,7 +408,7 @@ textarea { resize: vertical; }
 
 .badge {
   display: inline-flex; align-items: center;
-  padding: 3px 9px; border-radius: 6px;
+  padding: 3px 8px; border-radius: 6px;
   font-family: var(--mono); font-size: .68rem; letter-spacing: .1em;
   white-space: nowrap; border: 1px solid var(--border);
 }
@@ -469,8 +470,10 @@ textarea { resize: vertical; }
 .plan[data-status="done"] .meter-fill     { background: var(--status-good); }
 
 .plan-note {
-  margin: 10px 0 0; padding-left: 10px;
-  border-left: 2px solid var(--hairline);
+  margin: 16px 0 0; padding: 10px 12px;
+  background: var(--page);
+  border-left: 2px solid var(--border);
+  border-radius: 0 8px 8px 0;
   color: var(--text-secondary); font-size: .88rem; white-space: pre-wrap;
 }
 
@@ -493,7 +496,7 @@ textarea { resize: vertical; }
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 999px; padding: 5px 13px;
-  font-size: .86rem; color: var(--text-secondary); text-decoration: none;
+  font-size: .82rem; color: var(--text-secondary); text-decoration: none;
 }
 .drive-chip:hover { border-color: var(--accent); color: var(--accent); }
 .drive-chip .ext { font-size: .75rem; opacity: .7; }
@@ -588,18 +591,28 @@ textarea { resize: vertical; }
 .stage-legend .is-complete { color: var(--status-good); }
 .stage-legend .is-current { color: var(--accent); font-weight: 500; }
 .stage-cell {
+  position: relative;
   height: 5px; border-radius: 3px;
   background: var(--track);
   /* 文字移到下方的 .stage-legend,格子本身只當進度條 */
   font-size: 0; overflow: hidden;
+}
+/* 每一段自己也是一支進度條 —— 看得出「結案這一段做到哪」,
+   不只是「還沒做完」。整段塗單色會讓 0/7 和 6/7 長得一樣。 */
+.stage-fill {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  border-radius: 3px; background: var(--accent);
 }
 .stage-cell:first-child { border-radius: 3px; }
 .stage-name { letter-spacing: .02em; }
 .stage-cell:last-child { border-radius: 3px; }
 .stage-name { font-weight: 600; }
 .stage-count { font-family: var(--mono); font-size: .78rem; }
-.stage-cell.complete { background: var(--status-good); }
-.stage-cell.current  { background: var(--accent); color: #fff; }
+.stage-cell.complete .stage-fill { background: var(--status-good); }
+.stage-cell.current .stage-fill  { background: var(--accent); }
+/* 目前所在那段跟卡片狀態同色,一眼看出是哪種急迫程度 */
+.plan[data-status="overdue"] .stage-cell.current .stage-fill { background: var(--status-critical); }
+.plan[data-status="stale"] .stage-cell.current .stage-fill   { background: var(--status-warning); }
 .stage-cell.blank    { opacity: .55; }
 
 /* 步驟清單 */
@@ -687,9 +700,9 @@ textarea { resize: vertical; }
 .step-marker { font-size: .95rem; line-height: 1.6; flex: none; width: 1.2em; text-align: center; }
 
 .toggle-steps {
-  margin-top: 10px; background: none; border: 0; cursor: pointer;
-  font: inherit; font-size: .85rem; color: var(--accent);
-  padding: 2px 0;
+  margin-top: 14px; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: .82rem; color: var(--accent);
+  padding: 6px 0; min-height: 36px;
 }
 .toggle-steps:hover { text-decoration: underline; }
 
@@ -1155,7 +1168,7 @@ textarea { resize: vertical; }
 /* 一排小標籤只講「現在在誰手上」,看不出跑過幾關、各卡幾天。
    改成橫向軌道:每一站是一個節點,上緣的線代表那一段的狀態。 */
 .flow-track {
-  margin-top: 16px; padding: 14px 16px 12px;
+  margin-top: 20px; padding: 16px 18px 14px;
   background: var(--page);
   border: 1px solid var(--hairline);
   border-radius: 12px;
@@ -1185,7 +1198,7 @@ textarea { resize: vertical; }
   width: 10px; height: 10px; border-radius: 3px;
   background: var(--accent);
 }
-.track-unit { display: block; font-size: .86rem; color: var(--text-secondary); }
+.track-unit { display: block; font-size: .82rem; color: var(--text-secondary); }
 .track-days { display: block; font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
 
 .track-node.is-past .track-dot { background: var(--status-good); }

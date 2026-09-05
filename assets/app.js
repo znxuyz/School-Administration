@@ -16,10 +16,10 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=36";
+} from "./config.js?v=37";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=36";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=37";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1315,8 +1315,17 @@ function stageBarHtml(plan) {
 
   return `
     <div class="stage-bar" role="list" aria-label="計畫階段">
-      ${rows.map((r) => `<div class="stage-cell ${r.cls}" role="listitem"
-             title="${esc(r.label)} ${r.count}・${esc(r.hint)}"><span class="stage-name">${esc(r.label)}</span></div>`).join("")}
+      ${rows.map((r) => {
+        // 已完成的整段填滿、還沒開始的留空、目前所在的畫出段內比例。
+        // 0/7 也給 6% 的底色 —— 完全不填會讓人以為這一段不存在。
+        const inner = r.total ? Math.round((r.done / r.total) * 100) : 0;
+        const width = r.cls === "complete" ? 100 : r.cls === "current" ? Math.max(inner, 6) : inner;
+        return `<div class="stage-cell ${r.cls}" role="listitem"
+             title="${esc(r.label)} ${r.count}・${esc(r.hint)}">
+          <span class="stage-fill" style="width:${width}%"></span>
+          <span class="stage-name">${esc(r.label)}</span>
+        </div>`;
+      }).join("")}
     </div>
     <div class="stage-legend">
       ${rows.map((r) => `<span class="${r.cls === "complete" ? "is-complete" : r.cls === "current" ? "is-current" : ""}">${esc(r.label)} ${r.count}${r.cls === "current" ? " ← 現在" : ""}</span>`).join("")}

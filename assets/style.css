@@ -1219,6 +1219,28 @@ textarea { resize: vertical; }
 .track-node.is-todo .track-unit,
 .track-node.is-todo .track-days { color: var(--text-muted); }
 
+/* 軌道底下那一列:這批文件現在在哪 + 一鍵完成。
+   和軌道同一個框,因為講的是同一件事 —— 這批公文的現況與下一步。 */
+.track-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+.track-foot-loc {
+  display: flex; align-items: center; gap: 8px;
+  font-size: .85rem; color: var(--text-secondary);
+}
+.track-foot-loc select { width: auto; min-width: 9em; }
+/* 按鈕帶著這批文件的名字,可能很長,窄螢幕讓它自己一列 */
+.track-foot .next-done { white-space: normal; text-align: left; }
+@media (max-width: 720px) {
+  .track-foot { align-items: stretch; }
+  .track-foot-loc { flex: 1 1 100%; }
+  .track-foot-loc select { flex: 1; min-width: 0; }
+  .track-foot .next-done { width: 100%; text-align: center; }
+}
+
 @keyframes track-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 /* 會暈眩的人把動畫關掉,卡關仍靠顏色與文字辨識 */
 @media (prefers-reduced-motion: reduce) {

@@ -16,10 +16,10 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=35";
+} from "./config.js?v=36";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=35";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=36";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1555,7 +1555,7 @@ function flowHtml(plan, editable) {
  * 每一關的天數 = 這一筆到下一筆之間的日數;最後一筆(還在外面的那關)
  * 算到今天為止,所以會一天一天長,超過 STUCK_DAYS 就標紅。
  */
-function flowTrackHtml(plan) {
+function flowTrackHtml(plan, foot = "") {
   const flow = (plan.flow || [])
     .filter((f) => f.to)
     .slice()
@@ -1577,7 +1577,12 @@ function flowTrackHtml(plan) {
 
   // 起點是第一筆的 from(通常是承辦人手上),之後每一筆的 to 接成一站
   const nodes = [];
-  if (flow[0].from) nodes.push({ unit: flow[0].from, days: null, state: "past", note: "送出" });
+  // 起點的「送出」帶上日期 —— 整條軌道的其他站都有天數,只有這一站沒有時間感
+  const md = (d) => String(d || "").slice(5).replace("-", "/");
+  if (flow[0].from) {
+    nodes.push({ unit: flow[0].from, days: null, state: "past",
+      note: flow[0].date ? `${md(flow[0].date)} 送出` : "送出" });
+  }
   flow.forEach((f, i) => {
     const next = flow[i + 1];
     const days = dayGap(f.date, next ? next.date : null);
@@ -1606,7 +1611,7 @@ function flowTrackHtml(plan) {
   return `
     <div class="flow-track">
       <div class="track-head">
-        <span class="track-label">公文流向</span>
+        <span class="track-label">DOCUMENT FLOW</span>
         ${head}
       </div>
       <div class="track" role="list" aria-label="公文流向">
@@ -1617,6 +1622,7 @@ function flowTrackHtml(plan) {
             <span class="track-days num">${n.days === null ? esc(n.note) : `${n.days} 天・${esc(n.note)}`}</span>
           </div>`).join("")}
       </div>
+      ${foot}
     </div>`;
 }
 
@@ -1674,7 +1680,29 @@ function planCard(plan, { editable }) {
   // 徽章旁邊直接講「還剩幾天 / 逾期幾天」—— 這是老師看一張卡片最先要知道的事
   const deadlineNote = settlementText(plan);
 
-  const trackRow = flowTrackHtml(plan);
+  // 有流轉紀錄時,位置選單與完成鈕收進軌道框裡(設計稿的樣子);
+  // 沒有紀錄的新計畫沒有軌道可以收,維持原本的膠囊。
+  // 兩邊用的是同一組 class 與 data-*,所以事件處理與行為完全一樣。
+  // 只有真的畫得出軌道時才把控制項收進去 —— 條件要和 flowTrackHtml() 一致,
+  // 不然新計畫(還沒有流轉紀錄)會兩邊都不顯示,下一步就整個不見了。
+  const hasFlow = (plan.flow || []).some((f) => f.to);
+  const trackFoot = hasFlow && nxt && editable
+    ? `<div class="track-foot">
+         <label class="track-foot-loc">這批文件目前在
+           <select class="next-loc bundle-loc" data-plan="${esc(plan.id)}"
+                   data-steps="${nxt.idxs.join(",")}"
+                   aria-label="這批文件目前在哪">
+             ${unitOptionsHtml({ selected: nextLoc, withDefault: true })}
+           </select>
+         </label>
+         <button class="btn btn-sm btn-primary next-done" data-act="step-done" data-id="${esc(plan.id)}"
+                 title="把「${esc(nxt.titles.join("、"))}」標記為已完成,並自動接下一步">
+           <span aria-hidden="true">✓</span>完成「${esc(nxt.titles[0])}」${
+             nxt.titles.length > 1 ? `等 ${nxt.titles.length} 份` : ""}
+         </button>
+       </div>`
+    : "";
+  const trackRow = flowTrackHtml(plan, trackFoot);
 
   // 沒有流轉紀錄可畫軌道時(例如剛建立的計畫),仍用小標籤講在外文件,
   // 不然那些資訊會整段消失。有軌道時就不重複列一次。
@@ -1686,9 +1714,9 @@ function planCard(plan, { editable }) {
            d.days === null ? "" : `<span class="loc-days">${d.days} 天${d.stuck ? "・卡關" : ""}</span>`}
        </span>`).join("");
 
-  const outRow = (nextChip || outChips || legacy)
+  const outRow = ((trackFoot ? "" : nextChip) || outChips || legacy)
     ? `<div class="loc-row">
-         ${nextChip}
+         ${trackFoot ? "" : nextChip}
          ${outChips}
          ${legacy}
        </div>`

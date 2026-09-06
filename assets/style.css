@@ -625,7 +625,13 @@ textarea { resize: vertical; }
 }
 .stage-node.is-current .stage-name { color: var(--text-primary); font-weight: 600; }
 .stage-node.is-current .stage-count { color: var(--accent); }
-.stage-node:has(+ .is-current) { border-top-color: var(--accent-strong); }
+/* 通往「現在這一站」的那一段,底線刻意壓淡一階。
+   光暈是完整主色,底線淡一階,從中間到圓點的變化才看得出來 ——
+   深色模式的 --accent-strong 比主色「亮」,直接拿來當底線的話,
+   光暈反而是整段最暗的地方,看起來像線快斷掉而不是有光靠過來。 */
+.stage-node:has(+ .is-current) {
+  border-top-color: color-mix(in srgb, var(--accent) 45%, var(--track));
+}
 /* 疊在原線上面,但幾何位置完全重疊:top:-2px、height:2px ——
    就是 border-top 那一帶,所以接起來沒有高低差。
    漸層一定要從 transparent 起,不能從 --accent-strong 起:
@@ -651,6 +657,9 @@ textarea { resize: vertical; }
   background: var(--status-critical); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-critical) 26%, transparent);
 }
 .plan[data-status="overdue"] .stage-node.is-current .stage-count { color: var(--status-critical); }
+.plan[data-status="overdue"] .stage-node:has(+ .is-current) {
+  border-top-color: color-mix(in srgb, var(--status-critical) 45%, var(--track));
+}
 .plan[data-status="overdue"] .stage-node:has(+ .is-current)::after {
   /* 只有末端跟著閃,整條線一起閃會太吵 */
   background: linear-gradient(90deg, transparent, var(--status-critical));
@@ -659,6 +668,9 @@ textarea { resize: vertical; }
   background: var(--status-warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-warning) 26%, transparent);
 }
 .plan[data-status="stale"] .stage-node.is-current .stage-count { color: var(--status-warning); }
+.plan[data-status="stale"] .stage-node:has(+ .is-current) {
+  border-top-color: color-mix(in srgb, var(--status-warning) 45%, var(--track));
+}
 .plan[data-status="stale"] .stage-node:has(+ .is-current)::after {
   background: linear-gradient(90deg, transparent, var(--status-warning));
 }
@@ -1265,7 +1277,9 @@ textarea { resize: vertical; }
 .track-node:has(+ .is-past) { border-top-color: var(--accent-strong); }
 
 /* 現在停留的那一關要最顯眼:節點放大、加一圈光暈、單位名稱加深 */
-.track-node:has(+ .is-live) { border-top-color: var(--accent); }
+.track-node:has(+ .is-live) {
+  border-top-color: color-mix(in srgb, var(--accent) 45%, var(--track));
+}
 .track-node.is-live .track-dot {
   width: 12px; height: 12px; top: -7px;
   background: var(--accent);
@@ -1301,7 +1315,9 @@ textarea { resize: vertical; }
 .track-node.is-live .track-unit { color: var(--text-primary); font-weight: 500; }
 .track-node.is-live .track-days { color: var(--accent); }
 
-.track-node:has(+ .is-stuck) { border-top-color: var(--status-critical); }
+.track-node:has(+ .is-stuck) {
+  border-top-color: color-mix(in srgb, var(--status-critical) 45%, var(--track));
+}
 /* 還沒送出的下一站:通往它的線用虛線 */
 .track-node:has(+ .is-todo) { border-top-style: dashed; }
 .track-node.is-stuck .track-dot {

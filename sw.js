@@ -5,7 +5,7 @@
 // 網路優先:有網路一律拿最新的,順手更新快取;沒網路才拿快取墊檔。
 
 // 版本號請用 ./bump.sh 更新,不要手動改單一檔案
-const BUILD = "41";
+const BUILD = "42";
 const CACHE = `admin-tracker-${BUILD}`;
 
 // 首次安裝時先抓起來,離線也開得起來

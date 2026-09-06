@@ -141,6 +141,27 @@ for (const [name, opts] of 情境) {
   // 圓點和線段要共用同一組動畫,分開寫兩個久了會一亮一暗
   ok("圓點與線段同一組動畫", m.動畫.length <= 1, JSON.stringify(m.動畫));
 
+  // 光暈的顏色要和它疊上去的那條底線分得開,不然「從中間亮起來」看不出來。
+  // 這條擋過一個真的 bug:深色模式的 --accent-strong 比主色亮,拿來當底線的話,
+  // 光暈反而是整段最暗的地方,看起來像線快斷掉。
+  const 分得開 = await p.evaluate(() => {
+    const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+    const L = (s) => { const v = s.match(/\d+(\.\d+)?/g).map(Number); return 0.2126 * lin(v[0]) + 0.7152 * lin(v[1]) + 0.0722 * lin(v[2]); };
+    const 比 = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const out = [];
+    document.querySelectorAll(".track-node, .stage-node").forEach((n) => {
+      if (!n.getClientRects().length) return;
+      const a = getComputedStyle(n, "::after");
+      if (a.content === "none" || !a.backgroundImage || a.backgroundImage === "none") return;
+      const 尾 = (a.backgroundImage.match(/rgb\([^)]+\)/g) || []).pop();
+      if (!尾) return;
+      out.push(+比(L(getComputedStyle(n).borderTopColor), L(尾)).toFixed(2));
+    });
+    return out;
+  });
+  const 最低 = Math.min(99, ...分得開);
+  ok("光暈和底線分得開(≥1.25)", 最低 >= 1.25, `最低 ${最低}`);
+
   // 減少動態時要全部停下來
   await p.emulateMedia({ reducedMotion: "reduce" });
   await p.waitForTimeout(200);

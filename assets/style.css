@@ -457,7 +457,7 @@ textarea { resize: vertical; }
 .meter-value { font-family: var(--mono); font-weight: 500; color: var(--text-primary); }
 .meter-track {
   height: 6px; border-radius: 3px; overflow: hidden;
-  background: var(--track);
+  background: var(--accent-track);
 }
 .meter-fill {
   height: 100%; border-radius: 0 3px 3px 0;
@@ -467,7 +467,7 @@ textarea { resize: vertical; }
    軌道也染色的話,「已完成多少」的界線就看不清楚了 */
 .plan[data-status="overdue"] .meter-fill  { background: var(--status-critical); }
 .plan[data-status="stale"] .meter-fill    { background: var(--status-warning); }
-.plan[data-status="done"] .meter-fill     { background: var(--status-good); }
+.plan[data-status="done"] .meter-fill     { background: var(--accent-strong); }
 
 .plan-note {
   margin: 16px 0 0; padding: 10px 12px;
@@ -578,42 +578,88 @@ textarea { resize: vertical; }
 .step-loc { width: auto; min-width: 148px; font-size: .85rem; padding: 4px 8px; }
 
 /* 四階段進度:計畫 → 核定 → 執行 → 結案 */
-/* v2 的階段條:四段細線 + 下方一行文字。
-   原本是四個色塊,面積大、搶掉標題的注意力;細線一樣看得出走到哪一段。 */
-.stage-bar {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 3px; margin-top: 18px;
+/* 階段進度:沿用「公文流向」的節點軌道樣式。
+   關鍵是「線屬於它通往的那一站」—— 一段線畫的是「上一站 → 這一站」,
+   所以每個節點的線由它的「下一個」節點決定狀態(用 :has(+ …) 選)。
+   走到核定時,發光的是「計畫—核定」那一段,核定往後不發光。 */
+.stage-track {
+  display: flex; align-items: stretch; flex-wrap: wrap;
+  /* 換行時的列距,理由同 .track —— 圓點會凸到線上方,不留就會壓到上一排的字 */
+  row-gap: 22px;
+  margin-top: 20px;
+  /* 左右各留一點:圓點半徑加上光暈,不留白就會壓到卡片邊緣 */
+  padding: 0 10px 0 1px;
 }
-.stage-legend {
-  display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px;
-  font-family: var(--mono); font-size: .68rem; color: var(--text-muted);
+.stage-node {
+  flex: 1 1 110px; min-width: 96px;
+  padding: 12px 12px 0 0; position: relative;
+  border-top: 2px solid var(--track);
 }
-.stage-legend .is-complete { color: var(--status-good); }
-.stage-legend .is-current { color: var(--accent); font-weight: 500; }
-.stage-cell {
-  position: relative;
-  height: 5px; border-radius: 3px;
+/* 終點沒有下一站,所以不畫線,也不必再平分寬度 */
+.stage-node:last-child {
+  flex: 0 0 auto; min-width: 0; padding-right: 0;
+  border-top-width: 0; border-top-style: none;
+}
+.stage-dot {
+  position: absolute; top: -6px; left: 0; z-index: 2;
+  width: 10px; height: 10px; border-radius: 50%;
   background: var(--track);
-  /* 文字移到下方的 .stage-legend,格子本身只當進度條 */
-  font-size: 0; overflow: hidden;
 }
-/* 每一段自己也是一支進度條 —— 看得出「結案這一段做到哪」,
-   不只是「還沒做完」。整段塗單色會讓 0/7 和 6/7 長得一樣。 */
-.stage-fill {
-  position: absolute; top: 0; bottom: 0; left: 0;
-  border-radius: 3px; background: var(--accent);
+.stage-name { display: block; font-size: .82rem; font-weight: 500; color: var(--text-secondary); }
+.stage-count {
+  display: block; margin-top: 2px;
+  font-family: var(--mono); font-size: .72rem; color: var(--text-muted);
 }
-.stage-cell:first-child { border-radius: 3px; }
-.stage-name { letter-spacing: .02em; }
-.stage-cell:last-child { border-radius: 3px; }
-.stage-name { font-weight: 600; }
-.stage-count { font-family: var(--mono); font-size: .78rem; }
-.stage-cell.complete .stage-fill { background: var(--status-good); }
-.stage-cell.current .stage-fill  { background: var(--accent); }
-/* 目前所在那段跟卡片狀態同色,一眼看出是哪種急迫程度 */
-.plan[data-status="overdue"] .stage-cell.current .stage-fill { background: var(--status-critical); }
-.plan[data-status="stale"] .stage-cell.current .stage-fill   { background: var(--status-warning); }
-.stage-cell.blank    { opacity: .55; }
+
+/* 已走完的那一站:圓點與「通往它」的那一段線都是深主色,不閃 */
+.stage-node.is-complete .stage-dot { background: var(--accent-strong); }
+.stage-node:has(+ .is-complete) { border-top-color: var(--accent-strong); }
+
+/* 現在這一站:圓點閃爍,通往它的那一段線也閃 ——
+   靠近上一站的一端維持走過的顏色不動,越接近這一站越亮,
+   呼吸層用「透明 → 主色」的漸層疊上去,所以變化是連續的。 */
+.stage-node.is-current .stage-dot {
+  width: 12px; height: 12px; top: -7px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
+  animation: track-pulse 2.4s ease-in-out infinite;
+}
+.stage-node.is-current .stage-name { color: var(--text-primary); font-weight: 600; }
+.stage-node.is-current .stage-count { color: var(--accent); }
+.stage-node:has(+ .is-current) { border-top-color: var(--accent-strong); }
+/* 疊在原線上面,但幾何位置完全重疊:top:-2px、height:2px ——
+   就是 border-top 那一帶,所以接起來沒有高低差。
+   漸層一定要從 transparent 起,不能從 --accent-strong 起:
+   下面那條線本來就已經是走過的顏色了,再疊一層實色上去,
+   在狀態色(紅/黃)的情況會變成紫混在紅裡面。 */
+.stage-node:has(+ .is-current)::after {
+  content: ""; position: absolute; top: -2px; right: 0; left: auto;
+  width: 26%; min-width: 20px; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent));
+  animation: track-pulse 2.4s ease-in-out infinite;
+}
+
+/* 還沒走到的那幾站:通往它們的線用虛線 */
+.stage-node:has(+ .is-pending),
+.stage-node:has(+ .is-blank) { border-top-style: dashed; }
+.stage-node.is-blank { opacity: .55; }
+
+/* 逾期、久未更新時,現在那一站改用狀態色 —— 急迫程度優先於配色 */
+.plan[data-status="overdue"] .stage-node.is-current .stage-dot {
+  background: var(--status-critical); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-critical) 26%, transparent);
+}
+.plan[data-status="overdue"] .stage-node.is-current .stage-count { color: var(--status-critical); }
+.plan[data-status="overdue"] .stage-node:has(+ .is-current)::after {
+  /* 只有末端跟著閃,整條線一起閃會太吵 */
+  background: linear-gradient(90deg, transparent, var(--status-critical));
+}
+.plan[data-status="stale"] .stage-node.is-current .stage-dot {
+  background: var(--status-warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-warning) 26%, transparent);
+}
+.plan[data-status="stale"] .stage-node.is-current .stage-count { color: var(--status-warning); }
+.plan[data-status="stale"] .stage-node:has(+ .is-current)::after {
+  background: linear-gradient(90deg, transparent, var(--status-warning));
+}
 
 /* 步驟清單 */
 .steps { margin-top: 12px; border-top: 1px solid var(--hairline); }
@@ -1149,7 +1195,7 @@ textarea { resize: vertical; }
    選中的分頁不在這裡 —— 它的底色已經改成淡底 --accent-wash,
    套上為深色底算的字色會變成白字配近白底,整個看不見。
    下一步膠囊也不在 —— 它吃的是 --accent-fill(可能是漸層),所以用 --accent-ink。 */
-.stage-cell.current, .cal-cell.today .cal-day {
+.cal-cell.today .cal-day {
   color: var(--accent-ink-flat, #fff);
 }
 
@@ -1184,36 +1230,72 @@ textarea { resize: vertical; }
 .track-note { font-size: .8rem; color: var(--text-secondary); }
 .track-warn { font-size: .8rem; color: var(--status-serious); font-weight: 600; }
 
-/* 節點用 flex 平分寬度,窄螢幕自動換行成兩排 */
-.track { display: flex; align-items: stretch; flex-wrap: wrap; }
+/* 節點用 flex 平分寬度,窄螢幕自動換行成兩排。
+   row-gap 一定要留:圓點是往線的上方凸出去的(top:-7px 再加 4px 光暈),
+   沒有列距的話,第二排的線和圓點會壓在第一排的「幾天・已轉出」上面。 */
+.track { display: flex; align-items: stretch; flex-wrap: wrap; row-gap: 22px; }
 .track-node {
   flex: 1 1 110px; min-width: 100px;
   padding: 12px 12px 0 0; position: relative;
   /* 上緣的線 = 這一段的軌道。走過的用主色,還沒送出的用虛線。 */
   border-top: 2px solid var(--track);
 }
-.track-node:last-child { padding-right: 0; }
+/* 終點沒有下一站,所以不畫線,也不必再平分寬度 */
+.track-node:last-child {
+  flex: 0 0 auto; min-width: 0; padding-right: 0;
+  border-top-width: 0; border-top-style: none;
+}
 .track-dot {
-  position: absolute; top: -6px; left: 0;
-  width: 10px; height: 10px; border-radius: 3px;
+  position: absolute; top: -6px; left: 0; z-index: 2;
+  width: 10px; height: 10px; border-radius: 50%;
   background: var(--accent);
 }
 .track-unit { display: block; font-size: .82rem; color: var(--text-secondary); }
 .track-days { display: block; font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
 
-.track-node.is-past .track-dot { background: var(--status-good); }
-.track-node.is-past { border-top-color: var(--good-track); }
+/* 線同樣屬於它通往的那一站:最後更新到哪裡,線就停在那個圓點,右側不再拖一段 */
+.track-node.is-past .track-dot { background: var(--accent-strong); }
+.track-node:has(+ .is-past) { border-top-color: var(--accent-strong); }
 
 /* 現在停留的那一關要最顯眼:節點放大、加一圈光暈、單位名稱加深 */
-.track-node.is-live { border-top-color: var(--accent); }
+.track-node:has(+ .is-live) { border-top-color: var(--accent); }
 .track-node.is-live .track-dot {
   width: 12px; height: 12px; top: -7px;
-  background: var(--accent); box-shadow: 0 0 0 4px var(--accent-wash);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
+  animation: track-pulse 2.4s ease-in-out infinite;
 }
+/* 光從圓點沿著線往回暈開:只有靠圓點的末端一小段跟著亮暗,
+   和圓點共用同一組 @keyframes、duration、timing-function,節奏才對得上。
+
+   三個一定要守的規則,寫錯就會被看出來:
+   1. 幾何位置要和 border-top 完全重疊(top:-2px、height:2px),
+      不然接起來會有高低差,圓點看起來就像沒對準線。
+   2. 漸層從 transparent 起,不要從 --accent-strong 起 ——
+      下面那條線已經是走過的顏色,再疊一層實色上去,
+      卡關那段就會變成紫色混在紅色裡面。
+   3. 用 brightness 不用 opacity:底下的線和疊上去的漸層同色時,
+      降透明度只會露出一樣的顏色,等於完全看不出在閃。 */
+.track-node:has(+ .is-live)::after,
+.track-node:has(+ .is-stuck)::after {
+  content: ""; position: absolute; top: -2px; right: 0;
+  width: 26%; min-width: 20px; height: 2px;
+  animation: track-pulse 2.4s ease-in-out infinite;
+}
+.track-node:has(+ .is-live)::after {
+  background: linear-gradient(90deg, transparent, var(--accent));
+}
+.track-node:has(+ .is-stuck)::after {
+  background: linear-gradient(90deg, transparent, var(--status-critical));
+}
+/* 虛線的下一站是「還沒送出」,那一段不該發光 */
+.track-node:has(+ .is-todo)::after { content: none; }
 .track-node.is-live .track-unit { color: var(--text-primary); font-weight: 500; }
 .track-node.is-live .track-days { color: var(--accent); }
 
-.track-node.is-stuck { border-top-color: var(--status-critical); }
+.track-node:has(+ .is-stuck) { border-top-color: var(--status-critical); }
+/* 還沒送出的下一站:通往它的線用虛線 */
+.track-node:has(+ .is-todo) { border-top-style: dashed; }
 .track-node.is-stuck .track-dot {
   width: 12px; height: 12px; top: -7px;
   background: var(--status-critical);
@@ -1224,7 +1306,7 @@ textarea { resize: vertical; }
 .track-node.is-stuck .track-days { color: var(--status-critical); font-weight: 600; }
 
 /* 還沒送出的下一站:虛線 + 空心點,表示「還沒發生」 */
-.track-node.is-todo { border-top: 2px dashed var(--border); }
+.track-node.is-todo:not(:last-child) { border-top: 2px dashed var(--border); }
 .track-node.is-todo .track-dot {
   background: var(--page);
   box-shadow: inset 0 0 0 2px var(--text-muted);
@@ -1254,36 +1336,17 @@ textarea { resize: vertical; }
   .track-foot .next-done { width: 100%; text-align: center; }
 }
 
-/* 進到目前這一站的那截線,跟著圓點一起亮暗 ——
-   只有圓點在閃會顯得它被孤立在線上。
-
-   幾個一定要守的規則,寫錯就會歪:
-   1. 不要另外疊一條線。這是接在節點左邊的一小段漸層,
-      高度與 y 位置和 border-top 完全一樣(top:-2px = 蓋在框線上),
-      所以兩段接起來不會有高低差。
-   2. 漸層從「透明」漸到「這一站自己的顏色」,不要從主色起漸 ——
-      卡關是紅的,若從主色起漸,紫色會混進紅色裡。
-   3. 和圓點共用同一個 animation 宣告(同名、同秒數、同 timing),
-      分開寫兩個動畫進場時機會差開,久了變成一亮一暗。 */
-.track-node:has(+ .track-node.is-live)::after,
-.track-node:has(+ .track-node.is-stuck)::after {
-  content: ""; position: absolute;
-  /* 掛在「前一站」自己的右端,不是往左伸進別人的格子 ——
-     這樣手機上換行時也跑不出卡片邊緣。 */
-  top: -2px; right: 0; height: 2px; width: min(72px, 100%);
-  animation: track-pulse 2.4s ease-in-out infinite;
+/* 用 brightness 而不是 opacity:圓點和線段都是不透明的,轉暗就真的一起轉暗 */
+@keyframes track-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(.45); }
 }
-.track-node:has(+ .track-node.is-live)::after {
-  background: linear-gradient(to right, transparent, var(--accent));
-}
-.track-node:has(+ .track-node.is-stuck)::after {
-  background: linear-gradient(to right, transparent, var(--status-critical));
-}
-
-@keyframes track-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 /* 會暈眩的人把動畫關掉,卡關仍靠顏色與文字辨識 */
 @media (prefers-reduced-motion: reduce) {
   .track-node.is-stuck .track-dot,
-  .track-node:has(+ .track-node.is-live)::after,
-  .track-node:has(+ .track-node.is-stuck)::after { animation: none; }
+  .track-node.is-live .track-dot,
+  .stage-node.is-current .stage-dot,
+  .stage-node:has(+ .is-current)::after,
+  .track-node:has(+ .is-live)::after,
+  .track-node:has(+ .is-stuck)::after { animation: none; }
 }

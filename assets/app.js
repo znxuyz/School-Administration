@@ -16,10 +16,28 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=38";
+} from "./config.js?v=39";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=38";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=39";
+
+// 預覽模式:網址帶 ?demo=1 時跳過登入,直接用假資料把每一頁畫出來。
+// 任何寫入都會被擋下,只是給人看畫面用的 —— 改版時對照畫面、
+// 或是想給人看系統長什麼樣子但不方便給帳號的時候用。
+const DEMO = new URLSearchParams(location.search).has("demo");
+
+/**
+ * 預覽模式下擋掉寫入。回傳 true 表示「已經擋掉並說明了,呼叫端請直接 return」。
+ *
+ * 每一個會寫進 Firestore 的地方都要先問過這一句 —— 只擋一部分的話,
+ * 沒擋到的那些會真的送出去,然後被安全規則退回來,
+ * 使用者看到的是一句「權限不足」的紅字,完全看不懂發生什麼事。
+ */
+function demoBlocked() {
+  if (!DEMO) return false;
+  toast("預覽模式,不會存進資料庫");
+  return true;
+}
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -834,7 +852,7 @@ const doSignOut = () => signOut(auth);
 $("#btn-signout").addEventListener("click", doSignOut);
 $("#btn-signout-denied").addEventListener("click", doSignOut);
 
-onAuthStateChanged(auth, async (user) => {
+const authHandler = async (user) => {
   state.unsubscribe.forEach((fn) => fn());
   state.unsubscribe = [];
 
@@ -878,7 +896,9 @@ onAuthStateChanged(auth, async (user) => {
   showView("app");
   subscribeData();
   setTab(state.tab);
-});
+};
+
+if (!DEMO) onAuthStateChanged(auth, authHandler);
 
 /* ---------------- 資料訂閱 ---------------- */
 
@@ -1314,21 +1334,18 @@ function stageBarHtml(plan) {
   });
 
   return `
-    <div class="stage-bar" role="list" aria-label="計畫階段">
+    <div class="stage-track" role="list" aria-label="計畫階段">
       ${rows.map((r) => {
-        // 已完成的整段填滿、還沒開始的留空、目前所在的畫出段內比例。
-        // 0/7 也給 6% 的底色 —— 完全不填會讓人以為這一段不存在。
-        const inner = r.total ? Math.round((r.done / r.total) * 100) : 0;
-        const width = r.cls === "complete" ? 100 : r.cls === "current" ? Math.max(inner, 6) : inner;
-        return `<div class="stage-cell ${r.cls}" role="listitem"
+        const foot = r.cls === "complete" ? "已完成"
+          : r.cls === "current" ? "進行中"
+          : r.cls === "blank" ? "無步驟" : "未開始";
+        return `<div class="stage-node is-${r.cls}" role="listitem"
              title="${esc(r.label)} ${r.count}・${esc(r.hint)}">
-          <span class="stage-fill" style="width:${width}%"></span>
+          <span class="stage-dot" aria-hidden="true"></span>
           <span class="stage-name">${esc(r.label)}</span>
+          <span class="stage-count">${r.count} ・ ${foot}</span>
         </div>`;
       }).join("")}
-    </div>
-    <div class="stage-legend">
-      ${rows.map((r) => `<span class="${r.cls === "complete" ? "is-complete" : r.cls === "current" ? "is-current" : ""}">${esc(r.label)} ${r.count}${r.cls === "current" ? " ← 現在" : ""}</span>`).join("")}
     </div>`;
 }
 
@@ -2131,7 +2148,8 @@ $("#cal-detail").addEventListener("click", async (e) => {
   const del = e.target.closest("[data-note-del]");
   if (del) {
     const n = state.notes.find((x) => x.id === del.dataset.noteDel);
-    if (!n || !confirm(`要刪掉這則記事嗎?\n${n.date} ${n.text}`)) return;
+    if (!n || demoBlocked()) return;
+    if (!confirm(`要刪掉這則記事嗎?\n${n.date} ${n.text}`)) return;
     try {
       await deleteDoc(doc(db, "notes", n.id));
       toast("已刪除記事", "good");
@@ -2154,6 +2172,7 @@ $("#cal-detail").addEventListener("submit", async (e) => {
   // 選單被改壞或送出怪值時,退回最保守的範圍,不要不小心公開出去
   const scope = NOTE_SCOPES.some((x) => x.id === picked) ? picked : NOTE_SCOPE_DEFAULT;
   const editing = state.notes.find((n) => n.id === state.editingNote);
+  if (demoBlocked()) return;
   try {
     if (editing) {
       await updateDoc(doc(db, "notes", editing.id), { text, scope, ...stamp() });
@@ -2286,6 +2305,7 @@ formHo.addEventListener("submit", async (e) => {
   // 否則新承辦人的主任看不到、原處室主任卻還看得到。
   const patch = { ownerEmail: to.email, ownerName: to.name };
   if ($("#ho-dept").checked && to.dept) patch.dept = to.dept;
+  if (demoBlocked()) return;
 
   try {
     // 一筆一筆更新;中途失敗要讓使用者知道已經轉了幾筆
@@ -2320,6 +2340,7 @@ formHo.addEventListener("submit", async (e) => {
  * 失敗就把原因講出來 —— 不要讓老師以為存好了,其實沒有。
  */
 async function patchPlan(id, patch, what = "更新") {
+  if (demoBlocked()) return false;
   try {
     await updateDoc(doc(db, "plans", id), { ...patch, ...stamp() });
     announce(`已${what}`);          // 畫面看得到變化,螢幕閱讀器需要一句話
@@ -2371,6 +2392,7 @@ document.addEventListener("click", async (e) => {
   } else if (act === "restore") {
     await patchPlan(plan.id, { deletedAt: "", deletedBy: "" }, "還原");
   } else if (act === "purge") {
+    if (demoBlocked()) return;
     if (!confirm(`要永久刪除「${plan.title}」嗎?\n這次是真的刪掉,無法再還原。`)) return;
     try {
       await deleteDoc(doc(db, "plans", plan.id));
@@ -2643,6 +2665,7 @@ $("#btn-save-template").addEventListener("click", async () => {
   }
   const label = (prompt("範本名稱?(全校老師都看得到)", pf("title").value.trim()) || "").trim();
   if (!label) return;
+  if (demoBlocked()) return;
 
   try {
     await addDoc(collection(db, "templates"), {
@@ -2667,6 +2690,7 @@ $("#btn-del-template").addEventListener("click", async () => {
   const tpl = findTemplate($("#plan-template").value);
   const id = $("#plan-template").value.replace(/^saved:/, "");
   if (!tpl || !id) return;
+  if (demoBlocked()) return;
   if (!confirm(`要刪掉範本「${tpl.label}」嗎?\n已經用這個範本建立的計畫不受影響。`)) return;
 
   try {
@@ -2830,6 +2854,8 @@ formPlan.addEventListener("submit", async (e) => {
     return;
   }
 
+  if (demoBlocked()) return;
+
   try {
     if (editingPlanId) {
       await updateDoc(doc(db, "plans", editingPlanId), payload);
@@ -2911,6 +2937,7 @@ $("#members-table").addEventListener("click", async (e) => {
     }
     const n = plansOwnedBy(m.email).length;
     if (n && !confirm(`${m.name} 名下還有 ${n} 個計畫。\n移出名單後這些計畫會沒有人能維護,建議先按「移交」轉給接手的同仁。\n\n仍要移除嗎?`)) return;
+    if (demoBlocked()) return;
     if (!confirm(`確定要把 ${m.name}(${m.email})移出名單嗎?\n該帳號將無法再登入,但已建立的計畫會保留。`)) return;
     try {
       await deleteDoc(doc(db, "allowlist", m.email));
@@ -2942,6 +2969,8 @@ formMember.addEventListener("submit", async (e) => {
     return;
   }
 
+  if (demoBlocked()) { dlgMember.close(); return; }
+
   try {
     await setDoc(doc(db, "allowlist", email), data, { merge: true });
     dlgMember.close();
@@ -2952,3 +2981,37 @@ formMember.addEventListener("submit", async (e) => {
     show(err, true);
   }
 });
+
+/* ---------------- 預覽模式 ---------------- */
+
+// 網址帶 ?demo=1 時直接灌假資料進畫面,不連 Firebase、不寫入任何東西。
+if (DEMO) {
+  const d = await import("./demo.js?v=39");
+  state.user = d.DEMO_USER;
+  state.member = d.DEMO_MEMBER;
+  state.plans = d.DEMO_PLANS;
+  state.members = d.DEMO_MEMBERS;
+  state.notes = d.DEMO_NOTES;
+
+  $("#user-name").textContent = `${state.member.name}・${state.member.dept}(${ROLE_LABEL[roleOf(state.member)]})`;
+  $$(".admin-only").forEach((el) => { el.hidden = false; });
+
+  syncFilterFields();
+  syncSortUI();
+  applyScopeLabels();
+  showView("app");
+  fillYearSelects();
+  fillOwnerFilter();
+  renderPlanLists();
+  renderMembers();
+  setTab("dashboard");
+
+  // 一眼看得出這不是真的資料
+  const tag = document.createElement("span");
+  tag.textContent = "預覽模式・示範資料";
+  tag.style.cssText =
+    "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;" +
+    "padding:6px 14px;border-radius:999px;font-size:13px;letter-spacing:.04em;" +
+    "background:var(--accent,#0f766e);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.24);pointer-events:none";
+  document.body.appendChild(tag);
+}

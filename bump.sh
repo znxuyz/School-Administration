@@ -4,9 +4,9 @@
 #   ./bump.sh          → 自動加一
 #   ./bump.sh 12       → 直接指定號碼
 #
-# 版本號要一起改的地方有六處(config.js、index.html 兩處、
-# app.js 的 config 與 theme 匯入、sw.js),漏掉任何一處老師的瀏覽器
-# 就可能繼續用快取裡的舊程式。
+# 版本號要一起改的地方:config.js、index.html 兩處、sw.js,
+# 以及 app.js 裡所有 ./xxx.js?v= 的匯入(config、theme、demo…)。
+# 漏掉任何一處老師的瀏覽器就可能繼續用快取裡的舊程式。
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -21,8 +21,8 @@ fi
 
 sed -i "s/APP_BUILD = ${current}/APP_BUILD = ${next}/"                assets/config.js
 sed -i "s/?v=${current}\"/?v=${next}\"/g"                             index.html
-sed -i "s|\./config\.js?v=${current}\"|./config.js?v=${next}\"|"      assets/app.js
-sed -i "s|\./theme\.js?v=${current}\"|./theme.js?v=${next}\"|"        assets/app.js
+# app.js 裡每一個模組匯入都要換,新增模組時不必再回來改這支腳本
+sed -i "s|\.js?v=${current}\"|.js?v=${next}\"|g"                      assets/app.js
 sed -i "s/const BUILD = \"${current}\"/const BUILD = \"${next}\"/"    sw.js
 
 # 代號直接讀改好的 config.js,和程式顯示的完全一致

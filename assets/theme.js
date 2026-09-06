@@ -85,7 +85,24 @@ function effectiveTheme() {
   return saved || (systemPrefersDark() ? "dark" : "light");
 }
 
-const isDarkMode = () => effectiveTheme() === "dark";
+/**
+ * 色階要跟「畫面上真正的底色」對齊,不能只信 matchMedia ——
+ * 在 iframe 或還沒套上 color-scheme 的瞬間,matchMedia 可能還回報淺色,
+ * 但 CSS 的深色規則已經生效,結果就是深底配淺色階(白色進度條、看不見的分頁)。
+ * 所以直接量 --page 的亮度:那是 CSS 自己算出來的結果,一定同步。
+ */
+function renderedDark() {
+  try {
+    const page = getComputedStyle(document.documentElement).getPropertyValue("--page").trim();
+    if (page) {
+      const rgb = toRgb(page);
+      if (rgb) return luminance(rgb) < 0.5;
+    }
+  } catch { /* 量不到就退回偏好設定 */ }
+  return effectiveTheme() === "dark";
+}
+
+const isDarkMode = () => renderedDark();
 
 /**
  * CSS 的深色是寫在 @media (prefers-color-scheme: dark) 裡、加上
@@ -112,6 +129,8 @@ function applyTheme() {
 
 export function initThemeToggle() {
   applyTheme();
+  // 第一格算出來的模式可能還是舊的(iframe、字型/樣式尚未套用),下一格再校正一次
+  requestAnimationFrame(() => applyAccent());
   const btn = document.querySelector("#btn-theme");
   if (btn) {
     btn.addEventListener("click", () => {

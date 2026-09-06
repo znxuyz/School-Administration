@@ -7,7 +7,7 @@
 //   - 線一整段閃而不是漸層閃(用 opacity 疊同色,等於沒在閃)
 //   - 光暈中間壓暗了一階,線看起來像斷掉一截
 //   - 光暈起點是實色,脈動變暗時中間浮出一道邊,線被切成兩段
-//   - 整條底線都變色,而不是只變有光暈的那半段
+//   - 整條底線都變成狀態色,而不是「過了一半才慢慢變」
 //   - 手機換行時第二排的線壓在第一排的字上面(flex 沒留 row-gap)
 //   - 預覽模式沒擋住寫入,按下去噴一句看不懂的「權限不足」
 
@@ -143,9 +143,10 @@ for (const [name, opts] of 情境) {
   //   兩個停靠點 —— 中間多插一個壓暗的停靠點,線看起來會像斷掉一截
   //   起點全透明 —— 光暈是疊在底線上的,起點只要不是全透明,
   //                 脈動變暗時那個邊界就會浮出來,整條線看起來被切成兩段
-  //   起落 —— 末端要和底線分得開,不然根本看不出有漸層(淺色的 teal 只差 1.09)
-  //   色相 —— 末端要和底線同色相。跨色相的漸層(青→紅)中間會經過一片灰,
-  //           看起來像線糊掉了,也就是以前說的「紅色裡混到主色」
+  //   色距 —— 末端要和底線分得開。用 sRGB 距離而不是亮度比:狀態色那幾段
+  //           是換色相(青→紅),亮度可能差不多,亮度比會誤判成「看不出來」
+  //   末端色相 —— 要等於「下一站圓點」的色相。線是漸進變成那一站的顏色,
+  //               中途不可以冒出第三個顏色(以前就是這樣讓紅裡混到主色的)
   const 形狀 = await p.evaluate(() => {
     // 停靠點可能是 rgb(),也可能是 color(srgb …)(color-mix 算出來的)
     const 解 = (s) => {
@@ -162,11 +163,9 @@ for (const [name, opts] of 情境) {
       let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
       return (h * 60 + 360) % 360;
     };
-    const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
-    const L = (v) => 0.2126 * lin(v[0]) + 0.7152 * lin(v[1]) + 0.0722 * lin(v[2]);
-    const 比 = (a, b) => +(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05))).toFixed(2);
+    const 色距 = (a, b) => +Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]).toFixed(0);
 
-    const out = { 起點不透明: 0, 起落: [], 色差: [], 停靠點數: [] };
+    const out = { 起點不透明: 0, 色距: [], 色差: [], 停靠點數: [] };
     document.querySelectorAll(".track-node, .stage-node").forEach((n) => {
       if (!n.getClientRects().length) return;
       const a = getComputedStyle(n, "::after");
@@ -176,8 +175,10 @@ for (const [name, opts] of 情境) {
       const 尾 = 停[1];
       const 底 = 解(getComputedStyle(n).borderTopColor);
       if (停[0][3] > 0.01) out.起點不透明++;
-      out.起落.push(比(L(底), L(尾)));
-      const h1 = 色相(底), h2 = 色相(尾);
+      out.色距.push(色距(底, 尾));
+      // 漸層的末端要變成「下一站圓點」的顏色,不能是第三個顏色
+      const 點 = n.nextElementSibling?.querySelector(".track-dot, .stage-dot");
+      const h1 = 點 && 色相(解(getComputedStyle(點).backgroundColor)), h2 = 色相(尾);
       if (h1 != null && h2 != null) {
         const d = Math.abs(h1 - h2);
         out.色差.push(+Math.min(d, 360 - d).toFixed(0));
@@ -185,11 +186,12 @@ for (const [name, opts] of 情境) {
     });
     return out;
   });
-  ok("光暈只有兩個停靠點(中間不會凹下去)", 形狀.停靠點數.length === 0 && 形狀.起落.length > 0,
-     `異常的段數 ${JSON.stringify(形狀.停靠點數)}、量到 ${形狀.起落.length} 段`);
+  ok("光暈只有兩個停靠點(中間不會凹下去)", 形狀.停靠點數.length === 0 && 形狀.色距.length > 0,
+     `異常的段數 ${JSON.stringify(形狀.停靠點數)}、量到 ${形狀.色距.length} 段`);
   ok("光暈起點全透明(接得上底線、不會切成兩段)", 形狀.起點不透明 === 0, `不透明的有 ${形狀.起點不透明} 段`);
-  ok("光暈末端和底線同一個色相(≤20°)", Math.max(0, ...形狀.色差) <= 20, `最大 ${Math.max(0, ...形狀.色差)}°`);
-  ok("光暈末端和底線看得出差別(≥1.25)", Math.min(99, ...形狀.起落) >= 1.25, `最低 ${Math.min(99, ...形狀.起落)}`);
+  ok("光暈末端就是下一站圓點的顏色(≤20°)", 形狀.色差.length > 0 && Math.max(0, ...形狀.色差) <= 20,
+     `量到 ${形狀.色差.length} 段,最大 ${Math.max(0, ...形狀.色差)}°`);
+  ok("光暈末端和底線看得出差別(sRGB 距離 ≥40)", Math.min(999, ...形狀.色距) >= 40, `最低 ${Math.min(999, ...形狀.色距)}`);
 
   // 減少動態時要全部停下來
   await p.emulateMedia({ reducedMotion: "reduce" });

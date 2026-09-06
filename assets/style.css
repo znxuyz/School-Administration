@@ -1254,8 +1254,36 @@ textarea { resize: vertical; }
   .track-foot .next-done { width: 100%; text-align: center; }
 }
 
+/* 進到目前這一站的那截線,跟著圓點一起亮暗 ——
+   只有圓點在閃會顯得它被孤立在線上。
+
+   幾個一定要守的規則,寫錯就會歪:
+   1. 不要另外疊一條線。這是接在節點左邊的一小段漸層,
+      高度與 y 位置和 border-top 完全一樣(top:-2px = 蓋在框線上),
+      所以兩段接起來不會有高低差。
+   2. 漸層從「透明」漸到「這一站自己的顏色」,不要從主色起漸 ——
+      卡關是紅的,若從主色起漸,紫色會混進紅色裡。
+   3. 和圓點共用同一個 animation 宣告(同名、同秒數、同 timing),
+      分開寫兩個動畫進場時機會差開,久了變成一亮一暗。 */
+.track-node:has(+ .track-node.is-live)::after,
+.track-node:has(+ .track-node.is-stuck)::after {
+  content: ""; position: absolute;
+  /* 掛在「前一站」自己的右端,不是往左伸進別人的格子 ——
+     這樣手機上換行時也跑不出卡片邊緣。 */
+  top: -2px; right: 0; height: 2px; width: min(72px, 100%);
+  animation: track-pulse 2.4s ease-in-out infinite;
+}
+.track-node:has(+ .track-node.is-live)::after {
+  background: linear-gradient(to right, transparent, var(--accent));
+}
+.track-node:has(+ .track-node.is-stuck)::after {
+  background: linear-gradient(to right, transparent, var(--status-critical));
+}
+
 @keyframes track-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 /* 會暈眩的人把動畫關掉,卡關仍靠顏色與文字辨識 */
 @media (prefers-reduced-motion: reduce) {
-  .track-node.is-stuck .track-dot { animation: none; }
+  .track-node.is-stuck .track-dot,
+  .track-node:has(+ .track-node.is-live)::after,
+  .track-node:has(+ .track-node.is-stuck)::after { animation: none; }
 }

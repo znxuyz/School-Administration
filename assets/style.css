@@ -220,7 +220,6 @@ p.muted { margin: 0 0 .8em; }
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.brand-mark { font-size: 1.15rem; }
 .tabs { display: flex; gap: 2px; margin-right: auto; flex-wrap: wrap; }
 .tab {
   border: 0; background: none; cursor: pointer;
@@ -1128,14 +1127,18 @@ textarea { resize: vertical; }
 /* 面板要浮在頂欄上面,所以 .brand 當定位基準 */
 .brand { position: relative; }
 .brand-mark {
-  font: inherit; font-size: 1.15rem; line-height: 1;
   width: 34px; height: 34px; padding: 0;
   display: grid; place-items: center;
   border: 1px solid var(--border); border-radius: 9px;
-  background: var(--accent-wash); color: var(--text-primary);
-  cursor: pointer;
+  background: none; cursor: pointer;
+  /* 圖片的圓角要被按鈕切掉,不然深色圖的四角會露出來 */
+  overflow: hidden;
 }
+/* 圖本身是滿版的,直接填滿按鈕。border-radius 交給按鈕的 overflow 處理 */
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 這顆同時是換主題色的入口,所以 hover / 鍵盤 focus 要看得出來是可以按的 */
 .brand-mark:hover { border-color: var(--accent); }
+.brand-mark[aria-expanded="true"] { border-color: var(--accent); }
 
 .accent-menu {
   position: absolute; top: 42px; left: 0; z-index: 40;
@@ -1185,9 +1188,10 @@ textarea { resize: vertical; }
 }
 #accent-reset { margin-left: auto; }
 
-/* 漸層只用在大色塊:品牌圖示與主要按鈕 */
-/* 漸層只用在大色塊,字色用為原亮色配好的 --accent-ink */
-.brand-mark, .btn-primary, .fab-primary {
+/* 漸層只用在大色塊,字色用為原亮色配好的 --accent-ink。
+   品牌圖示不在這裡 —— 它現在放的是真的 app 圖示,漸層會被圖蓋掉,
+   留著只會在圖載入失敗時露出一塊看不出是什麼的色塊。 */
+.btn-primary, .fab-primary {
   background-image: var(--accent-fill, none);
   color: var(--accent-ink, #fff);
 }

@@ -120,6 +120,14 @@ for (const [name, opts] of 情境) {
   ok("主控台沒有錯誤", errs.length === 0, errs.join(" | "));
   ok("畫得出計畫卡", (await p.locator(".plan").count()) > 0);
 
+  // 頂欄的品牌圖示是張圖。路徑打錯的話按鈕會變成一個空框,
+  // 但畫面不會報錯,只有真的去量 naturalWidth 才看得出來。
+  const 圖示 = await p.evaluate(() => {
+    const img = document.querySelector(".brand-mark img");
+    return img ? { 載入: img.naturalWidth > 0, 寬: Math.round(img.getBoundingClientRect().width) } : null;
+  });
+  ok("頂欄品牌圖示載得進來", !!圖示?.載入 && 圖示.寬 > 0, JSON.stringify(圖示));
+
   const m = await p.evaluate(量軌道);
   const 最大偏移 = Math.max(0, ...m.點線差.map(Math.abs));
   ok("圓點對準線", 最大偏移 < 0.5, `最大偏移 ${最大偏移}px,共量 ${m.點線差.length} 個`);

@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=39">
+<link rel="stylesheet" href="assets/style.css?v=40">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -61,10 +61,13 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
-        <!-- 品牌圖示同時是換主題色的入口 -->
+        <!-- 品牌圖示同時是換主題色的入口。
+             用的是和主畫面捷徑同一張圖,老師在手機桌面看到的就是這個。
+             alt 留空:按鈕本身已經有 aria-label,再唸一次圖片只是重複 -->
         <button id="btn-accent" class="brand-mark" type="button"
                 title="點這裡換主題色" aria-label="更換主題色"
-                aria-haspopup="true" aria-expanded="false">📋</button>
+                aria-haspopup="true" aria-expanded="false"><img
+            src="assets/icons/icon-192.png" alt="" width="34" height="34"></button>
         <span class="brand-text">行政工作進度追蹤</span>
 
         <div id="accent-menu" class="accent-menu" role="dialog" aria-label="主題色" hidden>
@@ -471,6 +474,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=39"></script>
+<script type="module" src="assets/app.js?v=40"></script>
 </body>
 </html>

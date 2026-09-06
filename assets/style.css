@@ -625,25 +625,26 @@ textarea { resize: vertical; }
 }
 .stage-node.is-current .stage-name { color: var(--text-primary); font-weight: 600; }
 .stage-node.is-current .stage-count { color: var(--accent); }
-/* 通往「現在這一站」的那一段,底線刻意壓淡一階。
-   光暈是完整主色,底線淡一階,從中間到圓點的變化才看得出來 ——
-   深色模式的 --accent-strong 比主色「亮」,直接拿來當底線的話,
-   光暈反而是整段最暗的地方,看起來像線快斷掉而不是有光靠過來。 */
-.stage-node:has(+ .is-current) {
-  border-top-color: color-mix(in srgb, var(--accent) 45%, var(--track));
-}
-/* 疊在原線上面,但幾何位置完全重疊:top:-2px、height:2px ——
+.stage-node:has(+ .is-current) { border-top-color: var(--accent-strong); }
+/* 疊在原線上面,幾何位置完全重疊:top:-2px、height:2px ——
    就是 border-top 那一帶,所以接起來沒有高低差。
-   漸層一定要從 transparent 起,不能從 --accent-strong 起:
-   下面那條線本來就已經是走過的顏色了,再疊一層實色上去,
-   在狀態色(紅/黃)的情況會變成紫混在紅裡面。 */
+
+   漸層的三個停靠點,順序是「走過的顏色 → 壓暗 → 這一站的顏色」:
+   - 起點刻意等於底線的顏色,兩段接得上,中間不會看到一道接縫,
+     而且只有右半段在變,左半段還是走過的線(整段都變的話就太多了)
+   - 中間壓暗一階,末端才有東西可以「亮起來」。深色模式的 --accent-strong
+     其實比主色亮,少了這個凹陷的話越靠圓點反而越暗,像線快斷掉
+   - 只動明度不動色相,所以卡關那段從頭到尾都是紅的,不會混到主色 */
 .stage-node:has(+ .is-current)::after {
   content: ""; position: absolute; top: -2px; right: 0; left: auto;
   /* 佔這一段的一半。太短(試過 26%)會變成圓點旁邊黏一截別的顏色,
      看起來像沒接好;一半長的漸層才像光從圓點暈開來。
      用百分比而不是固定長度,兩站的軌道和四站的軌道才會一樣好看。 */
   width: 50%; min-width: 20px; height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent));
+  background: linear-gradient(90deg,
+    var(--accent-strong) 0%,
+    color-mix(in srgb, var(--accent) 40%, var(--track)) 30%,
+    var(--accent) 100%);
   animation: track-pulse 2.4s ease-in-out infinite;
 }
 
@@ -657,22 +658,22 @@ textarea { resize: vertical; }
   background: var(--status-critical); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-critical) 26%, transparent);
 }
 .plan[data-status="overdue"] .stage-node.is-current .stage-count { color: var(--status-critical); }
-.plan[data-status="overdue"] .stage-node:has(+ .is-current) {
-  border-top-color: color-mix(in srgb, var(--status-critical) 45%, var(--track));
-}
 .plan[data-status="overdue"] .stage-node:has(+ .is-current)::after {
   /* 只有末端跟著閃,整條線一起閃會太吵 */
-  background: linear-gradient(90deg, transparent, var(--status-critical));
+  background: linear-gradient(90deg,
+    var(--accent-strong) 0%,
+    color-mix(in srgb, var(--status-critical) 40%, var(--track)) 30%,
+    var(--status-critical) 100%);
 }
 .plan[data-status="stale"] .stage-node.is-current .stage-dot {
   background: var(--status-warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-warning) 26%, transparent);
 }
 .plan[data-status="stale"] .stage-node.is-current .stage-count { color: var(--status-warning); }
-.plan[data-status="stale"] .stage-node:has(+ .is-current) {
-  border-top-color: color-mix(in srgb, var(--status-warning) 45%, var(--track));
-}
 .plan[data-status="stale"] .stage-node:has(+ .is-current)::after {
-  background: linear-gradient(90deg, transparent, var(--status-warning));
+  background: linear-gradient(90deg,
+    var(--accent-strong) 0%,
+    color-mix(in srgb, var(--status-warning) 40%, var(--track)) 30%,
+    var(--status-warning) 100%);
 }
 
 /* 步驟清單 */
@@ -1277,9 +1278,7 @@ textarea { resize: vertical; }
 .track-node:has(+ .is-past) { border-top-color: var(--accent-strong); }
 
 /* 現在停留的那一關要最顯眼:節點放大、加一圈光暈、單位名稱加深 */
-.track-node:has(+ .is-live) {
-  border-top-color: color-mix(in srgb, var(--accent) 45%, var(--track));
-}
+.track-node:has(+ .is-live) { border-top-color: var(--accent-strong); }
 .track-node.is-live .track-dot {
   width: 12px; height: 12px; top: -7px;
   background: var(--accent);
@@ -1292,9 +1291,8 @@ textarea { resize: vertical; }
    三個一定要守的規則,寫錯就會被看出來:
    1. 幾何位置要和 border-top 完全重疊(top:-2px、height:2px),
       不然接起來會有高低差,圓點看起來就像沒對準線。
-   2. 漸層從 transparent 起,不要從 --accent-strong 起 ——
-      下面那條線已經是走過的顏色,再疊一層實色上去,
-      卡關那段就會變成紫色混在紅色裡面。
+   2. 漸層的停靠點與理由同上面的階段軌道 —— 起點等於底線的顏色(接得上、
+      而且只變右半段),中間壓暗,末端才亮得起來;只動明度不動色相。
    3. 用 brightness 不用 opacity:底下的線和疊上去的漸層同色時,
       降透明度只會露出一樣的顏色,等於完全看不出在閃。 */
 .track-node:has(+ .is-live)::after,
@@ -1305,19 +1303,23 @@ textarea { resize: vertical; }
   animation: track-pulse 2.4s ease-in-out infinite;
 }
 .track-node:has(+ .is-live)::after {
-  background: linear-gradient(90deg, transparent, var(--accent));
+  background: linear-gradient(90deg,
+    var(--accent-strong) 0%,
+    color-mix(in srgb, var(--accent) 40%, var(--track)) 30%,
+    var(--accent) 100%);
 }
 .track-node:has(+ .is-stuck)::after {
-  background: linear-gradient(90deg, transparent, var(--status-critical));
+  background: linear-gradient(90deg,
+    var(--accent-strong) 0%,
+    color-mix(in srgb, var(--status-critical) 40%, var(--track)) 30%,
+    var(--status-critical) 100%);
 }
 /* 虛線的下一站是「還沒送出」,那一段不該發光 */
 .track-node:has(+ .is-todo)::after { content: none; }
 .track-node.is-live .track-unit { color: var(--text-primary); font-weight: 500; }
 .track-node.is-live .track-days { color: var(--accent); }
 
-.track-node:has(+ .is-stuck) {
-  border-top-color: color-mix(in srgb, var(--status-critical) 45%, var(--track));
-}
+.track-node:has(+ .is-stuck) { border-top-color: var(--accent-strong); }
 /* 還沒送出的下一站:通往它的線用虛線 */
 .track-node:has(+ .is-todo) { border-top-style: dashed; }
 .track-node.is-stuck .track-dot {

@@ -5,7 +5,7 @@
 //   - 進度條圓點沒對準線(絕對定位是相對 padding box,不是 border box)
 //   - 卡關的紅線混進主色的紫(漸層跨了色相)
 //   - 線一整段閃而不是漸層閃(用 opacity 疊同色,等於沒在閃)
-//   - 光暈越靠圓點越暗,看起來像線快斷掉(深色模式的 --accent-strong 比主色亮)
+//   - 光暈中間壓暗了一階,線看起來像斷掉一截
 //   - 整條底線都變色,而不是只變有光暈的那半段
 //   - 手機換行時第二排的線壓在第一排的字上面(flex 沒留 row-gap)
 //   - 預覽模式沒擋住寫入,按下去噴一句看不懂的「權限不足」
@@ -138,12 +138,13 @@ for (const [name, opts] of 情境) {
   // 圓點和線段要共用同一組動畫,分開寫兩個久了會一亮一暗
   ok("圓點與線段同一組動畫", m.動畫.length <= 1, JSON.stringify(m.動畫));
 
-  // 光暈的形狀。三個性質都擋過真的 bug:
+  // 光暈的形狀。四個性質都擋過真的 bug:
+  //   兩個停靠點 —— 中間多插一個壓暗的停靠點,線看起來會像斷掉一截
   //   接縫 —— 起點要等於底線的顏色。不等於的話中間會出現一道明顯的界線,
   //           而且變的就不只是右半段了(整條底線壓淡就是這樣壞的)
-  //   起伏 —— 中間要壓暗、末端要亮回來。深色模式的 --accent-strong 比主色亮,
-  //           少了這個凹陷就會越靠圓點越暗,看起來像線快斷掉
-  //   色相 —— 中間和末端要同一個色相,卡關那段才不會有主色混在紅色裡
+  //   起落 —— 頭尾要分得開,不然根本看不出有漸層(淺色模式的 teal 只差 1.09)
+  //   色相 —— 頭尾要同一個色相。跨色相的漸層(青→紅)中間會經過一片灰,
+  //           看起來像線糊掉了,也就是以前說的「紅色裡混到主色」
   const 形狀 = await p.evaluate(() => {
     // 停靠點可能是 rgb(),也可能是 color(srgb …)(color-mix 算出來的)
     const 解 = (s) => {
@@ -164,17 +165,17 @@ for (const [name, opts] of 情境) {
     const L = (v) => 0.2126 * lin(v[0]) + 0.7152 * lin(v[1]) + 0.0722 * lin(v[2]);
     const 比 = (a, b) => +(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05))).toFixed(2);
 
-    const out = { 接縫: [], 起伏: [], 色差: [], 解不開: 0 };
+    const out = { 接縫: [], 起落: [], 色差: [], 停靠點數: [] };
     document.querySelectorAll(".track-node, .stage-node").forEach((n) => {
       if (!n.getClientRects().length) return;
       const a = getComputedStyle(n, "::after");
       if (a.content === "none" || !a.backgroundImage || a.backgroundImage === "none") return;
       const 停 = (a.backgroundImage.match(/(?:rgba?|color)\([^)]*\)/g) || []).map(解).filter(Boolean);
-      if (停.length < 3) { out.解不開++; return; }
-      const 尾 = 停[停.length - 1];
+      if (停.length !== 2) { out.停靠點數.push(停.length); return; }
+      const 尾 = 停[1];
       out.接縫.push(比(L(停[0]), L(解(getComputedStyle(n).borderTopColor))));
-      out.起伏.push(比(L(停[1]), L(尾)));
-      const h1 = 色相(停[1]), h2 = 色相(尾);
+      out.起落.push(比(L(停[0]), L(尾)));
+      const h1 = 色相(停[0]), h2 = 色相(尾);
       if (h1 != null && h2 != null) {
         const d = Math.abs(h1 - h2);
         out.色差.push(+Math.min(d, 360 - d).toFixed(0));
@@ -182,10 +183,11 @@ for (const [name, opts] of 情境) {
     });
     return out;
   });
-  ok("每一段光暈都解析得到", 形狀.解不開 === 0 && 形狀.起伏.length > 0, `解不開 ${形狀.解不開}、量到 ${形狀.起伏.length} 段`);
+  ok("光暈只有兩個停靠點(中間不會凹下去)", 形狀.停靠點數.length === 0 && 形狀.起落.length > 0,
+     `異常的段數 ${JSON.stringify(形狀.停靠點數)}、量到 ${形狀.起落.length} 段`);
   ok("光暈起點接得上底線(不留接縫)", Math.max(0, ...形狀.接縫) <= 1.05, `最大 ${Math.max(0, ...形狀.接縫)}`);
-  ok("光暈中間到末端同一個色相(≤20°)", Math.max(0, ...形狀.色差) <= 20, `最大 ${Math.max(0, ...形狀.色差)}°`);
-  ok("光暈中間到末端亮得起來(≥1.5)", Math.min(99, ...形狀.起伏) >= 1.5, `最低 ${Math.min(99, ...形狀.起伏)}`);
+  ok("光暈頭尾同一個色相(≤20°)", Math.max(0, ...形狀.色差) <= 20, `最大 ${Math.max(0, ...形狀.色差)}°`);
+  ok("光暈頭尾看得出差別(≥1.25)", Math.min(99, ...形狀.起落) >= 1.25, `最低 ${Math.min(99, ...形狀.起落)}`);
 
   // 減少動態時要全部停下來
   await p.emulateMedia({ reducedMotion: "reduce" });

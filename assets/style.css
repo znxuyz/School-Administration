@@ -27,6 +27,10 @@
   /* 未完成的軌道用中性灰,不用主色淺階:主色淺階會讓「還沒做」看起來像「在做」 */
   --track: #e8e8e3;
 
+  /* 軌道光暈要往哪個方向才「更顯眼」:淺色底往黑加深、深色底往白提亮。
+     只動明度不動色相,所以卡關那段從頭到尾都是紅的,不會混到別的顏色。 */
+  --glow-lift: #000;
+
   --top-bg: rgba(252, 252, 251, .58);
   --top-sheen: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 62%);
   --top-hair: rgba(255, 255, 255, .7);
@@ -49,6 +53,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    --glow-lift: #fff;
     --surface-1: #101319;
     --page: #07080a;
     --card-bg: linear-gradient(180deg, #101319, #0c0e12);
@@ -79,6 +84,7 @@
 /* 手動選深色時套同一組色票(上面那段只在系統偏好深色時生效) */
 :root[data-theme="dark"] {
     color-scheme: dark;
+    --glow-lift: #fff;
     --surface-1: #101319;
     --page: #07080a;
     --card-bg: linear-gradient(180deg, #101319, #0c0e12);
@@ -642,9 +648,8 @@ textarea { resize: vertical; }
      用百分比而不是固定長度,兩站的軌道和四站的軌道才會一樣好看。 */
   width: 50%; min-width: 20px; height: 2px;
   background: linear-gradient(90deg,
-    var(--accent-strong) 0%,
-    color-mix(in srgb, var(--accent) 40%, var(--track)) 30%,
-    var(--accent) 100%);
+    var(--accent-strong),
+    color-mix(in srgb, var(--accent) 85%, var(--glow-lift)));
   animation: track-pulse 2.4s ease-in-out infinite;
 }
 
@@ -653,7 +658,15 @@ textarea { resize: vertical; }
 .stage-node:has(+ .is-blank) { border-top-style: dashed; }
 .stage-node.is-blank { opacity: .55; }
 
-/* 逾期、久未更新時,現在那一站改用狀態色 —— 急迫程度優先於配色 */
+/* 逾期、久未更新時,現在那一站改用狀態色 —— 急迫程度優先於配色。
+   通往它的那一段線也一起換色:漸層的起點要等於底線,不然中間有接縫,
+   而且跨色相的漸層(青→紅)中間會經過一片灰,看起來像線糊掉了。 */
+.plan[data-status="overdue"] .stage-node:has(+ .is-current) {
+  border-top-color: var(--status-critical);
+}
+.plan[data-status="stale"] .stage-node:has(+ .is-current) {
+  border-top-color: var(--status-warning);
+}
 .plan[data-status="overdue"] .stage-node.is-current .stage-dot {
   background: var(--status-critical); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-critical) 26%, transparent);
 }
@@ -661,9 +674,8 @@ textarea { resize: vertical; }
 .plan[data-status="overdue"] .stage-node:has(+ .is-current)::after {
   /* 只有末端跟著閃,整條線一起閃會太吵 */
   background: linear-gradient(90deg,
-    var(--accent-strong) 0%,
-    color-mix(in srgb, var(--status-critical) 40%, var(--track)) 30%,
-    var(--status-critical) 100%);
+    var(--status-critical),
+    color-mix(in srgb, var(--status-critical) 78%, var(--glow-lift)));
 }
 .plan[data-status="stale"] .stage-node.is-current .stage-dot {
   background: var(--status-warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-warning) 26%, transparent);
@@ -671,9 +683,8 @@ textarea { resize: vertical; }
 .plan[data-status="stale"] .stage-node.is-current .stage-count { color: var(--status-warning); }
 .plan[data-status="stale"] .stage-node:has(+ .is-current)::after {
   background: linear-gradient(90deg,
-    var(--accent-strong) 0%,
-    color-mix(in srgb, var(--status-warning) 40%, var(--track)) 30%,
-    var(--status-warning) 100%);
+    var(--status-warning),
+    color-mix(in srgb, var(--status-warning) 78%, var(--glow-lift)));
 }
 
 /* 步驟清單 */
@@ -1304,22 +1315,22 @@ textarea { resize: vertical; }
 }
 .track-node:has(+ .is-live)::after {
   background: linear-gradient(90deg,
-    var(--accent-strong) 0%,
-    color-mix(in srgb, var(--accent) 40%, var(--track)) 30%,
-    var(--accent) 100%);
+    var(--accent-strong),
+    color-mix(in srgb, var(--accent) 85%, var(--glow-lift)));
 }
 .track-node:has(+ .is-stuck)::after {
   background: linear-gradient(90deg,
-    var(--accent-strong) 0%,
-    color-mix(in srgb, var(--status-critical) 40%, var(--track)) 30%,
-    var(--status-critical) 100%);
+    var(--status-critical),
+    color-mix(in srgb, var(--status-critical) 78%, var(--glow-lift)));
 }
 /* 虛線的下一站是「還沒送出」,那一段不該發光 */
 .track-node:has(+ .is-todo)::after { content: none; }
 .track-node.is-live .track-unit { color: var(--text-primary); font-weight: 500; }
 .track-node.is-live .track-days { color: var(--accent); }
 
-.track-node:has(+ .is-stuck) { border-top-color: var(--accent-strong); }
+/* 底線要和漸層的起點同色,不然中間會出現一道接縫。
+   卡關這一段整條紅,本來就該一眼看出是它出問題 */
+.track-node:has(+ .is-stuck) { border-top-color: var(--status-critical); }
 /* 還沒送出的下一站:通往它的線用虛線 */
 .track-node:has(+ .is-todo) { border-top-style: dashed; }
 .track-node.is-stuck .track-dot {

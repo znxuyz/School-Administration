@@ -12,14 +12,14 @@ import {
 
 import {
   APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
-  UNIT_GROUPS, DEFAULT_UNIT, PENDING_UNIT,
+  UNIT_GROUPS, DEFAULT_UNIT, PENDING_UNIT, INCOMING_TITLES,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=47";
+} from "./config.js?v=48";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=47";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=48";
 
 // 預覽模式:網址帶 ?demo=1 時跳過登入,直接用假資料把每一頁畫出來。
 // 任何寫入都會被擋下,只是給人看畫面用的 —— 改版時對照畫面、
@@ -207,8 +207,17 @@ function effectiveDue(step, plan) {
   return stageOf(step) === "close" ? settlementDueOf(plan) : "";
 }
 
-/** 這是不是「等對方寄來」的文件(收文) */
-const isIncoming = (step) => !!step.incoming;
+/** 名字看起來就是等對方寄來的(核定函那類) */
+const looksIncoming = (title) => INCOMING_TITLES.includes((title || "").trim());
+
+/**
+ * 這是不是「等對方寄來」的文件(收文)。
+ * 沒有這個欄位的舊資料就照名字猜 —— 這個功能上線前建的計畫,
+ * 核定函一樣該當成收文,不用老師回去一個一個補勾。
+ * 欄位存在就以欄位為準(包括老師刻意取消勾選的 false)。
+ */
+const isIncoming = (step) =>
+  step.incoming === undefined ? looksIncoming(step.title) : !!step.incoming;
 
 /** 收文還沒到手上 —— 位置停在「尚未收到」而且還沒完成 */
 const isWaiting = (step) =>
@@ -318,10 +327,10 @@ function resetStepsForCopy(steps) {
     stage: stageOf(s),
     status: "todo",
     bundleWithPrev: !!s.bundleWithPrev,
-    incoming: !!s.incoming,
+    incoming: isIncoming(s),
     note: "", due: "", doneAt: "", startedAt: "",
     // 收文的預設位置是「尚未收到」,不是承辦人手上 —— 核定函還沒寄來
-    location: s.incoming ? PENDING_UNIT : ""
+    location: isIncoming(s) ? PENDING_UNIT : ""
   }));
   return startFirstBundle(rows);
 }
@@ -2610,7 +2619,7 @@ function renderStepEditor() {
       </label>
       <label class="recv-doc" title="這份是等對方寄來的(例如上級核定函)。
 勾了之後,它的預設位置是「尚未收到」而不是承辦人手上,收到了再改成承辦人手上。">
-        <input type="checkbox" data-k="incoming"${s.incoming ? " checked" : ""}>
+        <input type="checkbox" data-k="incoming"${isIncoming(s) ? " checked" : ""}>
         <span>收文</span>
       </label>
       <input class="step-note-input" value="${esc(s.note || "")}" data-k="note"
@@ -2633,8 +2642,18 @@ function renderStepEditor() {
 $("#steps-editor").addEventListener("input", (e) => {
   const row = e.target.closest(".step-edit");
   if (!row || !e.target.dataset.k) return;
-  draftSteps[Number(row.dataset.i)][e.target.dataset.k] = e.target.value;
+  const i = Number(row.dataset.i);
+  draftSteps[i][e.target.dataset.k] = e.target.value;
   draftTouched = true;
+
+  // 名字改成核定函那類就自動勾「收文」,改走了就取消 ——
+  // 但老師自己動過那一格之後就不再插手(_incomingByHand 只存在草稿裡,不會寫進資料庫)。
+  if (e.target.dataset.k === "title" && !draftSteps[i]._incomingByHand) {
+    draftSteps[i].incoming = looksIncoming(e.target.value);
+    // 只同步那一格,不整個重畫 —— 重畫會把游標從輸入框彈掉
+    const box = row.querySelector('input[data-k="incoming"]');
+    if (box) box.checked = draftSteps[i].incoming;
+  }
 });
 
 $("#steps-editor").addEventListener("change", (e) => {
@@ -2643,6 +2662,8 @@ $("#steps-editor").addEventListener("change", (e) => {
   const k = e.target.dataset.k;
   draftSteps[Number(row.dataset.i)][k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
   draftTouched = true;
+  // 手動動過「收文」之後,改名字就不再自動幫忙勾或取消
+  if (k === "incoming") draftSteps[Number(row.dataset.i)]._incomingByHand = true;
   // 換階段時常用步驟清單要跟著換
   if (k === "stage") renderStepEditor();
 });
@@ -2787,7 +2808,11 @@ $("#btn-del-template").addEventListener("click", async () => {
 
 function applyTemplate(tpl) {
   // 第一批公文預設就是「進行中」(計畫書與概算表一起送就一起開始),後面全部「未開始」
-  draftSteps = startFirstBundle(tpl.steps.map((s) => ({ ...s, note: "", status: "todo" })));
+  draftSteps = startFirstBundle(tpl.steps.map((s) => ({
+    ...s, note: "", status: "todo",
+    // 這個功能上線前存的自訂範本沒有 incoming,照名字補
+    incoming: s.incoming === undefined ? looksIncoming(s.title) : !!s.incoming
+  })));
   draftTouched = false;          // 範本原封不動,還不算使用者的心血
   lastTemplateId = tpl.id;
   $("#template-hint").textContent = tpl.desc;
@@ -2861,7 +2886,9 @@ function openPlanDialog(plan, { copy = false } = {}) {
     draftTouched = true;
     renderStepEditor();
   } else if (plan) {
-    draftSteps = (plan.steps || []).map((s) => ({ ...s, stage: stageOf(s) }));
+    draftSteps = (plan.steps || []).map((s) => ({
+      ...s, stage: stageOf(s), incoming: isIncoming(s)
+    }));
     draftTouched = true;         // 既有計畫的步驟一律當成不可隨意覆蓋
     renderStepEditor();
   } else {
@@ -3070,7 +3097,7 @@ formMember.addEventListener("submit", async (e) => {
 
 // 網址帶 ?demo=1 時直接灌假資料進畫面,不連 Firebase、不寫入任何東西。
 if (DEMO) {
-  const d = await import("./demo.js?v=47");
+  const d = await import("./demo.js?v=48");
   state.user = d.DEMO_USER;
   state.member = d.DEMO_MEMBER;
   state.plans = d.DEMO_PLANS;

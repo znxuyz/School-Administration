@@ -245,6 +245,40 @@ for (const [name, opts] of 情境) {
   await b.close();
 }
 
+/* ---------- 「收文」會照名字自動勾 ---------- */
+
+console.log("\n【收文自動勾選】");
+{
+  const { b, p, errs } = await open({ scheme: "light" });
+  const 讀 = () => p.evaluate(() => [...document.querySelectorAll("#steps-editor .step-edit")].map((r) => ({
+    名: r.querySelector('input[data-k="title"]').value,
+    收文: r.querySelector('input[data-k="incoming"]').checked
+  })));
+
+  await p.click("#btn-new-plan");
+  await p.waitForTimeout(500);
+  const 範本 = (await 讀()).filter((x) => /核定函/.test(x.名));
+  ok("範本裡的核定函預設就是收文", 範本.length > 0 && 範本.every((x) => x.收文), JSON.stringify(範本));
+
+  await p.click("#btn-add-step");
+  await p.waitForTimeout(200);
+  const n = (await 讀()).length - 1;
+  const 打 = async (t) => {
+    await p.fill(`#steps-editor .step-edit[data-i="${n}"] input[data-k="title"]`, t);
+    await p.waitForTimeout(150);
+    return (await 讀())[n];
+  };
+  ok("手打核定函也會自動勾", (await 打("上級核定函收文")).收文);
+  ok("改成別的名字會自動取消", !(await 打("呈送領據")).收文);
+
+  // 手動動過之後系統就不該再插手,不然老師勾了又被改掉會很煩
+  await p.check(`#steps-editor .step-edit[data-i="${n}"] input[data-k="incoming"]`);
+  ok("手動勾過之後改名字不會被系統取消", (await 打("採購/請購作業")).收文);
+
+  ok("主控台沒有錯誤", errs.length === 0, errs.join(" | "));
+  await b.close();
+}
+
 /* ---------- 預覽模式不可以寫進資料庫 ---------- */
 
 console.log("\n【預覽模式】");

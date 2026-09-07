@@ -3,7 +3,7 @@
 // 別忘了執行 ./bump.sh <新的號碼> 讓 index.html 與 sw.js 一起更新,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
 // ---------------------------------------------------------------
-export const APP_BUILD = 46;
+export const APP_BUILD = 47;
 
 // 版本代號用單字表示,畫面上不出現阿拉伯數字。
 // 一次改版換一個代號,五十個輪完再從「朔」開始。
@@ -82,6 +82,11 @@ export const UNIT_GROUPS = [
 
 export const DEFAULT_UNIT = "承辦人手上";
 
+// 有些文件不是我們發出去的,是等對方寄來的 —— 上級核定函最典型:
+// 概算送上去之後,核定函是縣府那邊發下來的,在收到之前它根本不在承辦人手上。
+// 這種步驟標成「收文」,預設位置就是「尚未收到」,收到了才改成承辦人手上。
+export const PENDING_UNIT = "尚未收到";
+
 // 行政計畫的四個固定階段
 export const STAGES = [
   { id: "plan",    label: "計畫",  hint: "計畫書、經費概算表" },
@@ -140,7 +145,8 @@ export const TEMPLATES = [
     steps: [
       { stage: "plan",    title: "計畫書撰寫" },
       { stage: "plan",    title: "經費概算表", bundleWithPrev: true },
-      { stage: "approve", title: "上級核定函收文" },
+      // incoming:等縣府寄來的,不是我們送出去的
+      { stage: "approve", title: "上級核定函收文", incoming: true },
       { stage: "approve", title: "呈送領據" },
       { stage: "execute", title: "活動辦理" },
       { stage: "execute", title: "成果照片蒐集" },

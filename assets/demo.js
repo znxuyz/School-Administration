@@ -52,7 +52,7 @@ export const DEMO_PLANS = [
     steps: [
       S("plan", "計畫書撰寫", "done", { doneAt: shift(-92) }),
       S("plan", "經費概算表", "done", { doneAt: shift(-92), bundleWithPrev: true }),
-      S("approve", "上級核定函收文", "done", { doneAt: shift(-70) }),
+      S("approve", "上級核定函收文", "done", { doneAt: shift(-70), incoming: true }),
       S("approve", "呈送領據", "done", { doneAt: shift(-64) }),
       S("execute", "活動辦理", "done", { doneAt: shift(-14) }),
       S("execute", "成果照片蒐集", "done", { doneAt: shift(-12) }),
@@ -115,6 +115,31 @@ export const DEMO_PLANS = [
     flow: [
       { date: shift(-20), from: "承辦人手上", to: "輔導室", step: "計畫書撰寫", stage: "plan", note: "" },
       { date: shift(-18), from: "輔導室", to: "校長室", step: "簽陳校長核可", stage: "plan", note: "等批" }
+    ]
+  },
+  {
+    // 等核定函的例子:概算送上去了,核定函是縣府那邊寄下來的,還沒到手上
+    id: "p3b",
+    title: "校園網路電路費計畫",
+    dept: "教務處", year: YEAR,
+    ownerEmail: "demo@example.com", ownerName: "示範帳號",
+    startDate: shift(-30), endDate: shift(150),
+    budget: "", recurring: "year",
+    note: "",
+    updatedAt: stampAt(-6), updatedByName: "示範帳號",
+    steps: [
+      S("plan", "計畫書撰寫", "done", { doneAt: shift(-24) }),
+      S("plan", "經費概算表", "done", { doneAt: shift(-24), bundleWithPrev: true }),
+      S("approve", "上級核定函收文", "doing",
+        { startedAt: shift(-24), incoming: true, location: "尚未收到" }),
+      S("approve", "呈送領據", "todo"),
+      S("execute", "採購/請購作業", "todo"),
+      S("close", "核銷資料彙整", "todo")
+    ],
+    flow: [
+      { date: shift(-28), from: "承辦人手上", to: "教務處", step: "計畫書撰寫 等 2 份", stage: "plan", note: "" },
+      { date: shift(-26), from: "教務處", to: "校長室", step: "計畫書撰寫 等 2 份", stage: "plan", note: "" },
+      { date: shift(-24), from: "校長室", to: "彰化縣政府教育處", step: "計畫書撰寫 等 2 份", stage: "plan", note: "報府核定" }
     ]
   },
   {

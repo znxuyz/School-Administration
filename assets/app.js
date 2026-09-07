@@ -12,14 +12,14 @@ import {
 
 import {
   APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
-  UNIT_GROUPS, DEFAULT_UNIT,
+  UNIT_GROUPS, DEFAULT_UNIT, PENDING_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=46";
+} from "./config.js?v=47";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=46";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=47";
 
 // 預覽模式:網址帶 ?demo=1 時跳過登入,直接用假資料把每一頁畫出來。
 // 任何寫入都會被擋下,只是給人看畫面用的 —— 改版時對照畫面、
@@ -207,13 +207,38 @@ function effectiveDue(step, plan) {
   return stageOf(step) === "close" ? settlementDueOf(plan) : "";
 }
 
+/** 這是不是「等對方寄來」的文件(收文) */
+const isIncoming = (step) => !!step.incoming;
+
+/** 收文還沒到手上 —— 位置停在「尚未收到」而且還沒完成 */
+const isWaiting = (step) =>
+  isIncoming(step) && step.location === PENDING_UNIT && step.status !== "done" && step.status !== "na";
+
+/**
+ * 等這份文件等了幾天。從「進行中」的起算日算起 ——
+ * 送出去的文件從送出那天算,等別人寄來的當然從開始等那天算。
+ */
+function daysWaiting(step, today = todayStr()) {
+  if (!isWaiting(step) || !step.startedAt) return null;
+  return daysBetween(step.startedAt, today);
+}
+
+/** 這個計畫正在等哪些文件寄來 */
+function documentsWaiting(plan) {
+  return activeSteps(plan).filter(isWaiting).map((s) => ({
+    title: s.title,
+    days: daysWaiting(s)
+  }));
+}
+
 /**
  * 這份文件是哪天送出去的。
  * 新資料直接看 sentAt;舊資料沒有這個欄位,就回頭查流轉紀錄裡
  * 最後一次送到目前這個單位的日期。
  */
 function sentAtOf(step, plan) {
-  if (!step.location || step.location === DEFAULT_UNIT) return "";
+  // 「尚未收到」不是我們送出去的,沒有送出日期可言
+  if (!step.location || step.location === DEFAULT_UNIT || step.location === PENDING_UNIT) return "";
   if (step.sentAt) return step.sentAt;
   const hit = [...(plan.flow || [])]
     .filter((f) => f.to === step.location)
@@ -245,7 +270,8 @@ function hasStuckDoc(plan, today = todayStr()) {
 function documentsOut(plan) {
   const byUnit = new Map();
   activeSteps(plan)
-    .filter((s) => s.location && s.location !== DEFAULT_UNIT && s.status !== "done")
+    .filter((s) => s.location && s.location !== DEFAULT_UNIT
+      && s.location !== PENDING_UNIT && s.status !== "done")
     .forEach((s) => {
       const cur = byUnit.get(s.location) || { titles: [], days: null };
       cur.titles.push(s.title);
@@ -292,14 +318,21 @@ function resetStepsForCopy(steps) {
     stage: stageOf(s),
     status: "todo",
     bundleWithPrev: !!s.bundleWithPrev,
-    note: "", due: "", location: "", doneAt: "", startedAt: ""
+    incoming: !!s.incoming,
+    note: "", due: "", doneAt: "", startedAt: "",
+    // 收文的預設位置是「尚未收到」,不是承辦人手上 —— 核定函還沒寄來
+    location: s.incoming ? PENDING_UNIT : ""
   }));
   return startFirstBundle(rows);
 }
 
 /** 第一批公文預設就是「進行中」;一起送件的整批一起開始 */
-function startFirstBundle(rows) {
-  (bundlesOf(rows)[0] || []).forEach((i) => { rows[i].status = "doing"; });
+function startFirstBundle(rows, today = todayStr()) {
+  // 起算日要一起記:少了它,「已進行 N 天」和收文的「已等 N 天」都算不出來
+  (bundlesOf(rows)[0] || []).forEach((i) => {
+    rows[i].status = "doing";
+    rows[i].startedAt = rows[i].startedAt || today;
+  });
   return rows;
 }
 
@@ -1067,9 +1100,13 @@ const fillSelect = (sel, items, opts) => fillSelectHtml(sel, optionsHtml(items),
  *   - 卡片上的位置選單要有它(選了等於文件收回自己手上)
  *   - 篩選列不需要,「公文所在」問的是送到哪裡去了,篩自己手上等於沒篩
  */
-function unitOptionsHtml({ selected = null, withDefault = false } = {}) {
+function unitOptionsHtml({ selected = null, withDefault = false, incoming = false } = {}) {
   const mark = (v) => (selected !== null && (selected || "") === v ? " selected" : "");
-  return (withDefault ? `<option value=""${mark("")}>${esc(DEFAULT_UNIT)}</option>` : "") +
+  // 收文才給「尚未收到」。也在它已經是目前值時給,不然取消勾選之後就改不掉了。
+  const pending = incoming || selected === PENDING_UNIT
+    ? `<option value="${esc(PENDING_UNIT)}"${mark(PENDING_UNIT)}>${esc(PENDING_UNIT)}</option>`
+    : "";
+  return pending + (withDefault ? `<option value=""${mark("")}>${esc(DEFAULT_UNIT)}</option>` : "") +
     UNIT_GROUPS
       .filter((g) => !g.units.includes(DEFAULT_UNIT))
       .map((g) => `<optgroup label="${esc(g.label)}">${g.units
@@ -1427,7 +1464,7 @@ function stepRowHtml(plan, s, editable, inBundle) {
     ? `<div class="step-controls">
          ${inBundle || na ? "" : `
            <select class="step-loc" data-plan="${esc(plan.id)}" data-step="${s._i}" aria-label="這份文件目前在哪">
-             ${unitOptionsHtml({ selected: s.location || "", withDefault: true })}
+             ${unitOptionsHtml({ selected: s.location || "", withDefault: true, incoming: isIncoming(s) })}
            </select>`}
          ${statusSelect}
        </div>`
@@ -1435,15 +1472,23 @@ function stepRowHtml(plan, s, editable, inBundle) {
          <span class="step-sub">${!inBundle && loc !== DEFAULT_UNIT ? `在 ${esc(loc)}・` : ""}${STEP_LABEL[s.status] || ""}</span>
        </div>`;
 
-  const away = !inBundle && !na && s.location && s.location !== DEFAULT_UNIT && s.status !== "done";
+  const away = !inBundle && !na && s.location && s.location !== DEFAULT_UNIT
+    && s.location !== PENDING_UNIT && s.status !== "done";
   const gone = daysAway(s, plan);
   const stuck = isStuck(s, plan);
+  // 等對方寄來的文件走另一組字:它不是「送出去」的,講「已送至」會看不懂
+  const waited = !inBundle && isWaiting(s) ? daysWaiting(s) : null;
   const awayTag = away
     ? `<span class="away-tag${stuck ? " stuck" : ""}">
          <span aria-hidden="true">${stuck ? "⚠" : "📄"}</span>已送至 ${esc(s.location)}${
            gone === null ? "" : `・${gone} 天${stuck ? "(卡關)" : ""}`}
        </span>`
-    : "";
+    : (!inBundle && isWaiting(s)
+        ? `<span class="away-tag waiting">
+             <span aria-hidden="true">📥</span>${esc(PENDING_UNIT)}${
+               waited === null ? "" : `・已等 ${waited} 天`}
+           </span>`
+        : "");
 
   return `
     <div class="step-row" data-status="${esc(s.status)}">
@@ -1498,7 +1543,8 @@ function stepsHtml(plan, editable) {
              <span class="muted small">這批文件目前在</span>
              <select class="bundle-loc" data-plan="${esc(plan.id)}" data-steps="${idxs}"
                      aria-label="這批文件目前在哪">${
-                       unitOptionsHtml({ selected: loc === DEFAULT_UNIT ? "" : loc, withDefault: true })}</select>
+                       unitOptionsHtml({ selected: loc === DEFAULT_UNIT ? "" : loc, withDefault: true,
+                                         incoming: live.some(isIncoming) })}</select>
              ${daysTag}
            </div>`
         : (live.length
@@ -1623,16 +1669,28 @@ function flowTrackHtml(plan, foot = "") {
     });
   });
 
-  // 還沒送出的下一站:用下一批文件的位置推,沒有就不畫
+  // 還沒送出的下一站:用下一批文件的位置推,沒有就不畫。
+  // 下一批如果是收文(等對方寄來的),那一站不是「待送出」而是「還沒到手上」。
   const nxt = nextBundle(plan);
-  if (nxt && !liveUnit) nodes.push({ unit: "承辦人手上", days: null, state: "todo", note: "待送出" });
+  const waiting = documentsWaiting(plan);
+  if (nxt && !liveUnit) {
+    const 收文 = nxt.idxs.some((i) => isIncoming((plan.steps || [])[i] || {}));
+    nodes.push(收文
+      ? { unit: PENDING_UNIT, days: waiting[0]?.days ?? null, state: "todo", note: "等對方寄來" }
+      : { unit: DEFAULT_UNIT, days: null, state: "todo", note: "待送出" });
+  }
 
   const worst = nodes.find((n) => n.state === "stuck");
   const head = worst
     ? `<span class="track-warn">⚠ 停在${esc(worst.unit)} ${worst.days} 天,已超過 ${STUCK_DAYS} 天門檻</span>`
     : (liveUnit
         ? `<span class="track-note">在外 ${liveUnit.days ?? 0} 天,正常</span>`
-        : `<span class="track-note">目前沒有在外的公文</span>`);
+        : (waiting.length
+            // 沒有公文在外,但正在等對方寄東西來 —— 這也不是「沒事」
+            ? `<span class="track-note">等 ${esc(waiting[0].title)}${
+                 waiting.length > 1 ? ` 等 ${waiting.length} 份` : ""}${
+                 waiting[0].days === null ? "" : `,已等 ${waiting[0].days} 天`}</span>`
+            : `<span class="track-note">目前沒有在外的公文</span>`));
 
   return `
     <div class="flow-track">
@@ -1660,6 +1718,9 @@ function planCard(plan, { editable }) {
 
   // 在外文件一覽:哪一份文件送到哪裡去了
   const out = documentsOut(plan);
+  // 等對方寄來的文件。和「在外文件」分開講 —— 一個是壓在別人那裡,
+  // 一個是還沒到我們手上,老師要做的事完全不同。
+  const waiting = documentsWaiting(plan);
   const legacy = plan.location && plan.location !== DEFAULT_UNIT && !out.length
     ? `<span class="loc-chip">📄 公文在:<b>${esc(plan.location)}</b></span>` : "";
   // 下一步:一眼看出現在該做什麼,不用展開明細
@@ -1668,6 +1729,8 @@ function planCard(plan, { editable }) {
   const nxt = nextBundle(plan);
   // 這一批文件現在在哪(整批共用一個位置,取第一個有填的)
   const nextLoc = nxt ? ((plan.steps || []).find((s, i) => nxt.idxs.includes(i) && s.location)?.location || "") : "";
+  // 這一批裡只要有一份是收文,選單就要給「尚未收到」
+  const nextIncoming = !!nxt && nxt.idxs.some((i) => isIncoming((plan.steps || [])[i] || {}));
   const nextChip = nxt
     ? `<span class="next-chip">
          <span class="next-label"><span aria-hidden="true">▶</span>下一步:<b>${esc(nxt.text)}</b></span>
@@ -1675,7 +1738,7 @@ function planCard(plan, { editable }) {
            <select class="next-loc bundle-loc" data-plan="${esc(plan.id)}"
                    data-steps="${nxt.idxs.join(",")}"
                    aria-label="這批文件目前在哪" title="這批文件目前在哪">
-             ${unitOptionsHtml({ selected: nextLoc, withDefault: true })}
+             ${unitOptionsHtml({ selected: nextLoc, withDefault: true, incoming: nextIncoming })}
            </select>
            <button class="btn btn-sm next-done" data-act="step-done" data-id="${esc(plan.id)}"
                    title="把「${esc(nxt.titles.join("、"))}」標記為已完成,並自動接下一步">
@@ -1718,7 +1781,7 @@ function planCard(plan, { editable }) {
            <select class="next-loc bundle-loc" data-plan="${esc(plan.id)}"
                    data-steps="${nxt.idxs.join(",")}"
                    aria-label="這批文件目前在哪">
-             ${unitOptionsHtml({ selected: nextLoc, withDefault: true })}
+             ${unitOptionsHtml({ selected: nextLoc, withDefault: true, incoming: nextIncoming })}
            </select>
          </label>
          <button class="btn btn-sm btn-primary next-done" data-act="step-done" data-id="${esc(plan.id)}"
@@ -1740,10 +1803,18 @@ function planCard(plan, { editable }) {
            d.days === null ? "" : `<span class="loc-days">${d.days} 天${d.stuck ? "・卡關" : ""}</span>`}
        </span>`).join("");
 
-  const outRow = ((trackFoot ? "" : nextChip) || outChips || legacy)
+  // 有軌道時軌道自己會講「等 ○○,已等 N 天」,不用再列一次
+  const waitChips = trackRow ? "" : waiting.map((d) => `
+    <span class="loc-chip waiting">
+      <span aria-hidden="true">📥</span>等 ${esc(d.title)}${
+        d.days === null ? "" : `<span class="loc-days">已等 ${d.days} 天</span>`}
+    </span>`).join("");
+
+  const outRow = ((trackFoot ? "" : nextChip) || outChips || waitChips || legacy)
     ? `<div class="loc-row">
          ${trackFoot ? "" : nextChip}
          ${outChips}
+         ${waitChips}
          ${legacy}
        </div>`
     : "";
@@ -2463,7 +2534,9 @@ document.addEventListener("change", async (e) => {
       return {
         ...s,
         location: sel.value,
-        sentAt: same ? (s.sentAt || "") : (sel.value ? todayStr() : "")
+        sentAt: same ? (s.sentAt || "") : (sel.value ? todayStr() : ""),
+        // 改回「尚未收到」等於重新開始等,等待天數要從今天重算
+        startedAt: !same && sel.value === PENDING_UNIT ? todayStr() : (s.startedAt || "")
       };
     }
     const v = sel.value;
@@ -2492,7 +2565,8 @@ document.addEventListener("change", async (e) => {
       to: sel.value || DEFAULT_UNIT,
       step: targets.length > 1 ? `${first.title} 等 ${targets.length} 份` : first.title,
       stage: stageOf(first),
-      note: ""
+      // 「尚未收到 → 承辦人手上」講的是收到了,不是我們把文件送去哪裡
+      note: first.location === PENDING_UNIT && !sel.value ? "收到" : ""
     };
     if (entry.from !== entry.to) patch.flow = mergeFlow(plan.flow, entry);
   }
@@ -2534,6 +2608,11 @@ function renderStepEditor() {
           s.bundleWithPrev && canBundle ? " checked" : ""}${canBundle ? "" : " disabled"}>
         <span>同批</span>
       </label>
+      <label class="recv-doc" title="這份是等對方寄來的(例如上級核定函)。
+勾了之後,它的預設位置是「尚未收到」而不是承辦人手上,收到了再改成承辦人手上。">
+        <input type="checkbox" data-k="incoming"${s.incoming ? " checked" : ""}>
+        <span>收文</span>
+      </label>
       <input class="step-note-input" value="${esc(s.note || "")}" data-k="note"
              placeholder="備註(選填),例:缺兩張發票" maxlength="100" aria-label="步驟備註">
       <div class="row-tools">
@@ -2568,7 +2647,9 @@ $("#steps-editor").addEventListener("change", (e) => {
   if (k === "stage") renderStepEditor();
 });
 
-const blankStep = (stage) => ({ title: "", status: "todo", note: "", stage, bundleWithPrev: false });
+const blankStep = (stage) => ({
+  title: "", status: "todo", note: "", stage, bundleWithPrev: false, incoming: false
+});
 
 /** 把焦點放到第 n 列的名稱欄位,插入後可以直接打字 */
 function focusStepRow(n) {
@@ -2674,7 +2755,8 @@ $("#btn-save-template").addEventListener("click", async () => {
       steps: steps.map((s) => ({
         title: s.title.trim(),
         stage: stageOf(s),
-        bundleWithPrev: !!s.bundleWithPrev
+        bundleWithPrev: !!s.bundleWithPrev,
+        incoming: !!s.incoming
       })),
       createdBy: state.member?.name || "",
       createdAt: serverTimestamp(),
@@ -2811,7 +2893,9 @@ formPlan.addEventListener("submit", async (e) => {
         // 步驟不再各自填期限,但舊資料若有就保留,判逾期時仍會優先採用
         due: s.due || "",
         // 以下都是在卡片上維護的,編輯計畫時要原封帶回去,不能被洗掉
-        location: s.location || "",
+        incoming: !!s.incoming,
+        // 收文沒填位置時預設「尚未收到」,不要落到承辦人手上
+        location: s.location || (s.incoming ? PENDING_UNIT : ""),
         sentAt: s.sentAt || "",
         doneAt: s.doneAt || "",
         startedAt: status === "doing" ? (s.startedAt || todayStr()) : (s.startedAt || "")
@@ -2986,7 +3070,7 @@ formMember.addEventListener("submit", async (e) => {
 
 // 網址帶 ?demo=1 時直接灌假資料進畫面,不連 Firebase、不寫入任何東西。
 if (DEMO) {
-  const d = await import("./demo.js?v=46");
+  const d = await import("./demo.js?v=47");
   state.user = d.DEMO_USER;
   state.member = d.DEMO_MEMBER;
   state.plans = d.DEMO_PLANS;

@@ -9,6 +9,7 @@
 //   - 光暈起點是實色,脈動變暗時中間浮出一道邊,線被切成兩段
 //   - 整條底線都變成狀態色,而不是「過了一半才慢慢變」
 //   - 手機換行時第二排的線壓在第一排的字上面(flex 沒留 row-gap)
+//   - 收文(等對方寄來的)被當成「在承辦人手上」,或被寫成「已送至 尚未收到」
 //   - 預覽模式沒擋住寫入,按下去噴一句看不懂的「權限不足」
 
 import { open } from "./probe.mjs";
@@ -128,6 +129,29 @@ for (const [name, opts] of 情境) {
     return img ? { 載入: img.naturalWidth > 0, 寬: Math.round(img.getBoundingClientRect().width) } : null;
   });
   ok("頂欄品牌圖示載得進來", !!圖示?.載入 && 圖示.寬 > 0, JSON.stringify(圖示));
+
+  // 收文(等對方寄來的文件):預設不能落到「承辦人手上」,
+  // 位置選單要給得出「尚未收到」,畫面也要說得出等了幾天。
+  const 收文 = await p.evaluate(() => {
+    const card = [...document.querySelectorAll("#panel-mine .plan, #panel-dashboard .plan")]
+      .find((c) => c.getClientRects().length && /上級核定函收文/.test(c.textContent));
+    if (!card) return null;
+    const 選單 = [...card.querySelectorAll(".step-loc, .next-loc")]
+      .map((s) => ({ 值: s.value, 有尚未收到: [...s.options].some((o) => o.value === "尚未收到") }));
+    return {
+      有等待字樣: /尚未收到|等對方寄來|等 上級核定函收文/.test(card.textContent),
+      沒被當成在外文件: !/已送至 尚未收到/.test(card.textContent),
+      收文選單: 選單.filter((x) => x.值 === "尚未收到"),
+      非收文誤給選項: 選單.filter((x) => x.值 !== "尚未收到" && x.有尚未收到).length
+    };
+  });
+  if (收文) {
+    ok("收文有講「還沒收到」", 收文.有等待字樣, JSON.stringify(收文.有等待字樣));
+    ok("收文不會被寫成「已送至」", 收文.沒被當成在外文件);
+    ok("收文的位置選單給得出「尚未收到」", 收文.收文選單.length > 0 && 收文.收文選單.every((x) => x.有尚未收到),
+       JSON.stringify(收文.收文選單));
+    ok("一般步驟不會多出「尚未收到」", 收文.非收文誤給選項 === 0, `多出 ${收文.非收文誤給選項} 個`);
+  }
 
   const m = await p.evaluate(量軌道);
   const 最大偏移 = Math.max(0, ...m.點線差.map(Math.abs));

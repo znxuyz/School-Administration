@@ -582,6 +582,13 @@ textarea { resize: vertical; }
   border-left: 1px solid var(--border);
 }
 .loc-chip.stuck .loc-days { color: var(--text-primary); font-weight: 600; }
+
+/* 等對方寄來的文件。刻意用中性灰而不是狀態色 ——
+   還沒收到不是誰的錯,只是還沒到,不該和「卡關」長得一樣搶注意力。 */
+.loc-chip.waiting, .away-tag.waiting {
+  background: var(--track); color: var(--text-secondary);
+}
+.loc-chip.waiting { border-style: dashed; }
 .step-controls { display: flex; gap: 6px; flex: none; }
 .step-loc { width: auto; min-width: 148px; font-size: .85rem; padding: 4px 8px; }
 
@@ -942,10 +949,10 @@ textarea { resize: vertical; }
 /* 每個步驟兩列:上排是主要欄位,下排放備註,右側工具鈕跨兩列 */
 .step-edit {
   display: grid; gap: 6px; align-items: center;
-  grid-template-columns: 88px minmax(160px, 1fr) 112px auto auto;
+  grid-template-columns: 88px minmax(160px, 1fr) 112px auto auto auto;
   grid-template-areas:
-    "stage title status same tools"
-    "note  note  note   note tools";
+    "stage title status same recv tools"
+    "note  note  note   note note tools";
   padding-bottom: 6px;
   border-bottom: 1px solid var(--hairline);
 }
@@ -953,17 +960,18 @@ textarea { resize: vertical; }
 .step-edit > input[data-k="title"] { grid-area: title; }
 .step-edit > select[data-k="status"] { grid-area: status; }
 .step-edit > .same-doc { grid-area: same; }
+.step-edit > .recv-doc { grid-area: recv; }
 .step-edit > .step-note-input { grid-area: note; }
 .step-edit > .row-tools { grid-area: tools; }
 .step-note-input { font-size: .85rem; padding: 5px 9px; }
 
-/* 「與上一個步驟一起送公文」 */
-.same-doc {
+/* 「與上一個步驟一起送公文」與「這份是等對方寄來的」 */
+.same-doc, .recv-doc {
   display: flex; align-items: center; gap: 4px;
   font-size: .78rem; color: var(--text-secondary);
   white-space: nowrap; cursor: pointer;
 }
-.same-doc input { width: auto; margin: 0; accent-color: var(--accent); }
+.same-doc input, .recv-doc input { width: auto; margin: 0; accent-color: var(--accent); }
 .same-doc:has(input:disabled) { opacity: .35; cursor: default; }
 .step-edit input, .step-edit select { margin: 0; }
 
@@ -991,11 +999,11 @@ textarea { resize: vertical; }
   .grid-2 { grid-template-columns: 1fr; }
   /* 手機上把步驟拆成三列,名稱才有足夠寬度 */
   .step-edit {
-    grid-template-columns: 88px 1fr auto;
+    grid-template-columns: 88px auto auto 1fr auto;
     grid-template-areas:
-      "stage  title title"
-      "status same  tools"
-      "note   note  note";
+      "stage  title  title title title"
+      "status same   recv  .     tools"
+      "note   note   note  note  note";
   }
   .step-row { flex-wrap: wrap; }
   .step-controls { width: 100%; padding-left: 1.2em; }

@@ -121,6 +121,29 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ---------- 手機提醒的裝置登記 ----------
+    // 每台裝置一筆。文件 ID 是 endpoint 的雜湊,所以同一台重訂會蓋掉同一筆。
+    //
+    // 只能登記自己:ownerEmail 必須就是登入的那個人。
+    // 不然任何成員都能幫別人登記一台裝置,把別人的提醒收到自己手機上。
+    //
+    // 讀取只開放自己的那幾筆 —— endpoint 是推播的收件地址,
+    // 拿到別人的就能冒充伺服器對他發通知。真正要讀全部的是雲端那支排程程式,
+    // 它用服務帳號,本來就不受這裡的規則限制。
+    match /pushSubs/{subId} {
+      allow read, delete: if isMember() && resource.data.ownerEmail == emailKey();
+
+      allow create, update: if isMember()
+        && request.resource.data.ownerEmail == emailKey()
+        && request.resource.data.endpoint is string
+        && request.resource.data.endpoint.size() > 0
+        && request.resource.data.endpoint.size() <= 1000
+        && request.resource.data.p256dh is string
+        && request.resource.data.p256dh.size() <= 200
+        && request.resource.data.auth is string
+        && request.resource.data.auth.size() <= 100;
+    }
+
     // ---------- 行政計畫 ----------
     match /plans/{planId} {
 

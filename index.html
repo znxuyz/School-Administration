@@ -6,7 +6,7 @@
 <title>行政工作進度追蹤系統</title>
 <!-- ?v= 是版本標記。改版請執行 ./bump.sh,它會一次更新所有地方的號碼;
      漏改的話瀏覽器會繼續用快取裡的舊檔案 -->
-<link rel="stylesheet" href="assets/style.css?v=48">
+<link rel="stylesheet" href="assets/style.css?v=51">
 
 <!-- 加到手機主畫面用 -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -151,8 +151,11 @@
         <strong id="cal-title" class="cal-title"></strong>
         <button id="cal-next" class="btn btn-sm" aria-label="下一個月">›</button>
         <button id="cal-today" class="btn btn-sm btn-ghost">回到本月</button>
+        <button id="btn-push" class="btn btn-sm" type="button" hidden
+                aria-pressed="false">🔔 手機提醒</button>
         <span class="cal-summary" id="cal-summary"></span>
       </div>
+      <p class="hint" id="push-hint" hidden></p>
 
       <div class="cal-legend" id="cal-legend"></div>
       <div class="cal-grid" id="cal-grid" role="group" aria-label="月曆"></div>
@@ -474,6 +477,6 @@
 <!-- 常用步驟名稱清單(由 config.js 產生) -->
 <div id="datalists" hidden></div>
 
-<script type="module" src="assets/app.js?v=48"></script>
+<script type="module" src="assets/app.js?v=51"></script>
 </body>
 </html>

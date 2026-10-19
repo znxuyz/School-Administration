@@ -1,0 +1,45 @@
+# 每天早上把提醒推到老師手機上。
+#
+# 設定在 README〈手機提醒〉那一節,需要兩個 secret:
+#   FIREBASE_SERVICE_ACCOUNT  Firebase 服務帳號的 JSON(整包貼進去)
+#   VAPID_PRIVATE_KEY         tools/make-vapid.mjs 產出來的私鑰
+# 和一個 variable:
+#   VAPID_PUBLIC_KEY          同一組的公鑰(和 assets/push.js 裡那串一樣)
+#
+# ⚠️ GitHub 的排程本來就不準時,尖峰時可能延遲 5～60 分鐘。
+#    「今天有哪些事」這種每日提醒沒差,但不要拿它做「十點整開會」的提醒。
+name: 每日提醒
+
+on:
+  schedule:
+    # UTC 22:30 = 台灣早上 06:30。GitHub 的 cron 一律看 UTC,
+    # 要改時間記得自己減八小時(跨日的話日期也要跟著調)。
+    - cron: "30 22 * * 0-4"   # 週日～週四的 UTC 晚上 = 台灣週一～週五早上
+  # 設定好之後先用這個按鈕手動跑一次,確認收得到再等隔天
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 只看會送給誰,不真的送出
+        type: boolean
+        default: true
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # 只有這支排程程式需要套件,網頁本身不需要任何建置
+      - run: npm ci --omit=dev || npm install --omit=dev
+
+      - run: node tools/send-reminders.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+          VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
+          DRY_RUN: ${{ inputs.dry_run == true && '1' || '' }}

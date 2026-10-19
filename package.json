@@ -1,0 +1,16 @@
+{
+  "name": "school-administration",
+  "private": true,
+  "type": "module",
+  "description": "網頁本身不需要建置,這份 package.json 只是給每日提醒的排程程式用的",
+  "scripts": {
+    "test": "node test/reminders.test.mjs",
+    "check": "node test/check.mjs",
+    "vapid": "node tools/make-vapid.mjs",
+    "send-reminders": "node tools/send-reminders.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "web-push": "^3.6.7"
+  }
+}

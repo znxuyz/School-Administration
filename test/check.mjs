@@ -245,6 +245,35 @@ for (const [name, opts] of 情境) {
   await b.close();
 }
 
+/* ---------- 手機提醒的開關 ---------- */
+
+console.log("\n【手機提醒】");
+{
+  const { b, p, errs } = await open({ scheme: "light" });
+  await p.click('.tab[data-tab="calendar"]');
+  await p.waitForTimeout(600);
+
+  const 設了金鑰 = await p.evaluate(async () => {
+    const c = await import("./assets/config.js?probe=1");
+    return !!c.VAPID_PUBLIC_KEY;
+  });
+  const 狀態 = await p.evaluate(() => ({
+    按鈕顯示: !document.querySelector("#btn-push")?.hidden,
+    提示: document.querySelector("#push-hint")?.textContent?.trim() || ""
+  }));
+
+  if (設了金鑰) {
+    // 設好金鑰之後要給得出按鈕(headless 下不會真的訂閱,只看按鈕在不在)
+    ok("設了金鑰就有開關可以按", 狀態.按鈕顯示, JSON.stringify(狀態));
+  } else {
+    // 還沒設金鑰時,不要留一顆按了也沒反應的按鈕,而且要講清楚原因
+    ok("還沒設金鑰時不給沒用的按鈕", !狀態.按鈕顯示, JSON.stringify(狀態));
+    ok("而且要說清楚為什麼", /還沒設定推播金鑰/.test(狀態.提示), 狀態.提示);
+  }
+  ok("主控台沒有錯誤", errs.length === 0, errs.join(" | "));
+  await b.close();
+}
+
 /* ---------- 「收文」會照名字自動勾 ---------- */
 
 console.log("\n【收文自動勾選】");

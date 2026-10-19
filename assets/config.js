@@ -3,7 +3,7 @@
 // 別忘了執行 ./bump.sh <新的號碼> 讓 index.html 與 sw.js 一起更新,
 // 否則老師的瀏覽器會繼續用快取裡的舊程式。
 // ---------------------------------------------------------------
-export const APP_BUILD = 48;
+export const APP_BUILD = 51;
 
 // 版本代號用單字表示,畫面上不出現阿拉伯數字。
 // 一次改版換一個代號,五十個輪完再從「朔」開始。
@@ -52,6 +52,12 @@ export const ROLES = [
 ];
 
 export const DEFAULT_ROLE = "staff";
+
+// 手機提醒的 VAPID 公鑰(推播的「寄件人身分」)。
+// 這是公開資訊,放在前端沒問題;成對的私鑰放在 GitHub Secrets。
+// 產生方式與完整設定步驟見 README 的〈手機提醒〉。
+// 留空 = 關掉手機提醒功能,畫面會直接說還沒設定。
+export const VAPID_PUBLIC_KEY = "";
 
 // 承辦計畫的處室(建立計畫時選)
 export const DEPARTMENTS = [

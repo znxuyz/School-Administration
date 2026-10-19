@@ -11,15 +11,30 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 import {
-  APP_VERSION, firebaseConfig, DEPARTMENTS, STALE_DAYS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
-  UNIT_GROUPS, DEFAULT_UNIT, PENDING_UNIT, INCOMING_TITLES,
+  APP_VERSION, firebaseConfig, DEPARTMENTS, SETTLEMENT_GRACE_DAYS, STUCK_DAYS,
+  UNIT_GROUPS, DEFAULT_UNIT, PENDING_UNIT,
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=48";
+} from "./config.js?v=51";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=48";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=51";
+
+// 計畫 / 步驟 / 記事的判斷邏輯。和雲端發手機提醒的程式共用同一份 ——
+// 畫面說「明天到期」,通知就不能說別的。
+import {
+  todayStr, toDate, daysBetween, addDays,
+  activeSteps, stageOf, STAGE_LABEL, deadlineOf, settlementDueOf, effectiveDue,
+  progressOf, statusOf,
+  looksIncoming, isIncoming, isWaiting, daysWaiting, documentsWaiting,
+  sentAtOf, daysAway, isStuck, hasStuckDoc, documentsOut,
+  NOTE_SCOPES, noteScopeOf, canSeeNote as canSeeNoteFor
+} from "./core.js?v=51";
+
+// 手機提醒:這裡只負責跟瀏覽器要權限、把裝置登記起來。
+// 真正在早上送出通知的是 GitHub Actions,見 tools/send-reminders.mjs。
+import { pushSupport, currentSubscription, enablePush, disablePush, endpointId } from "./push.js?v=51";
 
 // 預覽模式:網址帶 ?demo=1 時跳過登入,直接用假資料把每一頁畫出來。
 // 任何寫入都會被擋下,只是給人看畫面用的 —— 改版時對照畫面、
@@ -78,24 +93,10 @@ function announce(msg) {
   if (el) el.textContent = msg;
 }
 
-/** 今天的 YYYY-MM-DD(本地時區),用來和 <input type="date"> 的值直接字串比較 */
-function todayStr(d = new Date()) {
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /** 民國學年度:8 月起算新學年 */
 function currentAcademicYear(d = new Date()) {
   const roc = d.getFullYear() - 1911;
   return d.getMonth() + 1 >= 8 ? roc : roc - 1;
-}
-
-/** Firestore Timestamp / Date / null → Date | null */
-function toDate(ts) {
-  if (!ts) return null;
-  if (typeof ts.toDate === "function") return ts.toDate();
-  const d = new Date(ts);
-  return isNaN(d) ? null : d;
 }
 
 function relativeDays(date) {
@@ -105,11 +106,6 @@ function relativeDays(date) {
   if (days === 1) return "昨天更新";
   if (days < 30) return `${days} 天前更新`;
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} 更新`;
-}
-
-/** 兩個 YYYY-MM-DD 相差幾天 */
-function daysBetween(a, b) {
-  return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
 }
 
 const money = (n) => Number(n).toLocaleString("zh-Hant-TW");
@@ -133,12 +129,8 @@ const STEP_LABEL = { todo: "未開始", doing: "進行中", done: "已完成", n
 const STEP_MARK = { todo: "○", doing: "◐", done: "●", na: "—" };
 const STEP_STATUSES = Object.keys(STEP_LABEL);
 
-/** 本次要做的步驟(排除標記為不適用的) */
-const activeSteps = (plan) => (plan.steps || []).filter((s) => s.status !== "na");
-
 /** 沒被丟進垃圾桶的計畫。刪除是可還原的,平常的畫面一律不顯示已刪除的 */
 const livePlans = () => state.plans.filter((p) => !p.deletedAt);
-const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.id, s.label]));
 
 const STATUS_META = {
   active:  { label: "進行中", code: "ACTIVE",  icon: "▶", cls: "badge-active",  color: "var(--accent)" },
@@ -146,18 +138,6 @@ const STATUS_META = {
   stale:   { label: "待更新", code: "STALE",   icon: "◷", cls: "badge-stale",   color: "var(--status-warning)" },
   done:    { label: "已完成", code: "CLOSED",  icon: "✓", cls: "badge-done",    color: "var(--status-good)" }
 };
-
-/** 舊資料相容:執行結束日先看 endDate,沒有才回頭看早期的 dueDate */
-const deadlineOf = (plan) => plan.endDate || plan.dueDate || "";
-
-/** YYYY-MM-DD 加上 n 天 */
-function addDays(ymd, n) {
-  if (!ymd) return "";
-  const d = new Date(ymd + "T00:00:00");
-  if (isNaN(d)) return "";
-  d.setDate(d.getDate() + n);
-  return todayStr(d);
-}
 
 /** YYYY-MM-DD 加上 n 個月(月底日期會自動收斂,例如 1/31 加一個月是 2/28) */
 function addMonths(ymd, n) {
@@ -190,111 +170,6 @@ function recurDue(plan, today = todayStr()) {
   const next = nextRoundDate(plan);
   if (!next) return null;
   return today >= addDays(next, -RECUR_LEAD_DAYS) ? next : null;
-}
-
-/**
- * 結算期限 = 執行結束日 + 寬限天數。
- * 老師填的執行結束日不含送結算的時間,系統自動往後加。
- */
-const settlementDueOf = (plan) => addDays(deadlineOf(plan), SETTLEMENT_GRACE_DAYS);
-
-/**
- * 步驟實際要對照的期限:自己填的優先;
- * 結案階段沒填的話,一律用計畫的結算期限。
- */
-function effectiveDue(step, plan) {
-  if (step.due) return step.due;
-  return stageOf(step) === "close" ? settlementDueOf(plan) : "";
-}
-
-/** 名字看起來就是等對方寄來的(核定函那類) */
-const looksIncoming = (title) => INCOMING_TITLES.includes((title || "").trim());
-
-/**
- * 這是不是「等對方寄來」的文件(收文)。
- * 沒有這個欄位的舊資料就照名字猜 —— 這個功能上線前建的計畫,
- * 核定函一樣該當成收文,不用老師回去一個一個補勾。
- * 欄位存在就以欄位為準(包括老師刻意取消勾選的 false)。
- */
-const isIncoming = (step) =>
-  step.incoming === undefined ? looksIncoming(step.title) : !!step.incoming;
-
-/** 收文還沒到手上 —— 位置停在「尚未收到」而且還沒完成 */
-const isWaiting = (step) =>
-  isIncoming(step) && step.location === PENDING_UNIT && step.status !== "done" && step.status !== "na";
-
-/**
- * 等這份文件等了幾天。從「進行中」的起算日算起 ——
- * 送出去的文件從送出那天算,等別人寄來的當然從開始等那天算。
- */
-function daysWaiting(step, today = todayStr()) {
-  if (!isWaiting(step) || !step.startedAt) return null;
-  return daysBetween(step.startedAt, today);
-}
-
-/** 這個計畫正在等哪些文件寄來 */
-function documentsWaiting(plan) {
-  return activeSteps(plan).filter(isWaiting).map((s) => ({
-    title: s.title,
-    days: daysWaiting(s)
-  }));
-}
-
-/**
- * 這份文件是哪天送出去的。
- * 新資料直接看 sentAt;舊資料沒有這個欄位,就回頭查流轉紀錄裡
- * 最後一次送到目前這個單位的日期。
- */
-function sentAtOf(step, plan) {
-  // 「尚未收到」不是我們送出去的,沒有送出日期可言
-  if (!step.location || step.location === DEFAULT_UNIT || step.location === PENDING_UNIT) return "";
-  if (step.sentAt) return step.sentAt;
-  const hit = [...(plan.flow || [])]
-    .filter((f) => f.to === step.location)
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-  return hit?.date || "";
-}
-
-/** 這份文件已經在對方那裡放了幾天;null = 不在外面或算不出來 */
-function daysAway(step, plan, today = todayStr()) {
-  if (step.status === "done" || step.status === "na") return null;
-  const at = sentAtOf(step, plan);
-  return at ? daysBetween(at, today) : null;
-}
-
-const isStuck = (step, plan, today = todayStr()) => {
-  const d = daysAway(step, plan, today);
-  return d !== null && d >= STUCK_DAYS;
-};
-
-/** 這個計畫有沒有卡關的公文 */
-function hasStuckDoc(plan, today = todayStr()) {
-  return activeSteps(plan).some((s) => isStuck(s, plan, today));
-}
-
-/**
- * 還在外面的文件:有指定所在單位、而且不是「承辦人手上」、也還沒完成的步驟。
- * 公文位置是掛在每一份文件(步驟)上的,不是整個計畫共用一個位置。
- */
-function documentsOut(plan) {
-  const byUnit = new Map();
-  activeSteps(plan)
-    .filter((s) => s.location && s.location !== DEFAULT_UNIT
-      && s.location !== PENDING_UNIT && s.status !== "done")
-    .forEach((s) => {
-      const cur = byUnit.get(s.location) || { titles: [], days: null };
-      cur.titles.push(s.title);
-      const d = daysAway(s, plan);
-      if (d !== null && (cur.days === null || d > cur.days)) cur.days = d;
-      byUnit.set(s.location, cur);
-    });
-  // 同一個單位的多份文件收成一則,卡片才不會被一長串小標籤淹沒
-  return [...byUnit].map(([unit, v]) => ({
-    unit,
-    title: v.titles.length === 1 ? v.titles[0] : `${v.titles[0]} 等 ${v.titles.length} 份`,
-    days: v.days,
-    stuck: v.days !== null && v.days >= STUCK_DAYS
-  }));
 }
 
 /**
@@ -437,19 +312,8 @@ const NOTE_COLOR = "#7c5cd6";
 // 記事的可見範圍,由窄到寬排。
 // 預設「只有自己」—— 寫錯範圍的代價不對等:不小心寫窄了頂多自己再改開,
 // 不小心寫寬了整校都看過了,收不回來。要給別人看是一個明確的動作。
-const NOTE_SCOPES = [
-  { id: "self", label: "只有自己" },
-  { id: "dept", label: "同處室" },
-  { id: "all",  label: "全校可看" }
-];
 const NOTE_SCOPE_LABEL = Object.fromEntries(NOTE_SCOPES.map((x) => [x.id, x.label]));
 const NOTE_SCOPE_DEFAULT = "self";
-
-/**
- * 舊記事沒有 scope 欄位,一律視為全校可看 —— 當初寫的時候就是全校共看,
- * 這是還原它原本的意思,和新記事的預設值(只有自己)是兩回事。
- */
-const noteScopeOf = (n) => (NOTE_SCOPES.some((x) => x.id === n.scope) ? n.scope : "all");
 
 /** 某一天的記事,新增順序在前的先列 */
 const notesOn = (notes, date) =>
@@ -655,13 +519,6 @@ function unitsOf(plan) {
   return [...new Set(units)];
 }
 
-const stageOf = (step) => (STAGE_IDS.includes(step.stage) ? step.stage : "execute");
-
-function progressOf(plan) {
-  const steps = activeSteps(plan);          // 不適用的步驟不列入分母
-  const done = steps.filter((s) => s.status === "done").length;
-  return { done, total: steps.length, pct: steps.length ? Math.round((done / steps.length) * 100) : 0 };
-}
 
 /** 每個階段的完成度 */
 function stageProgress(plan) {
@@ -676,23 +533,6 @@ function stageProgress(plan) {
 function currentStage(plan) {
   const rows = stageProgress(plan).filter((r) => r.total > 0);
   return rows.find((r) => !r.complete) || null;
-}
-
-/** 計畫狀態:已完成 > 逾期 > 待更新 > 進行中(today 可指定,方便測試與批次計算) */
-function statusOf(plan, today = todayStr()) {
-  const { done, total } = progressOf(plan);
-  if (total > 0 && done === total) return "done";
-
-  // 整體期限用「結算期限」(執行結束日 + 寬限期),
-  // 結案階段沒填期限的步驟也一律對照結算期限。
-  const deadlines = [settlementDueOf(plan), ...activeSteps(plan)
-    .filter((s) => s.status !== "done")
-    .map((s) => effectiveDue(s, plan))].filter(Boolean);
-  if (deadlines.some((d) => d < today)) return "overdue";
-
-  const updated = toDate(plan.updatedAt);
-  if (updated && (Date.now() - updated.getTime()) / 86400000 > STALE_DAYS) return "stale";
-  return "active";
 }
 
 /** 執行期間的文字描述 */
@@ -833,18 +673,8 @@ function canSee(plan) {
 /** 行事曆記事只有寫的人和管理員能改 */
 const canEditNote = (n) => (n.ownerEmail || "").toLowerCase() === myEmail() || isAdmin();
 
-/**
- * 誰看得到這則記事:全校的大家都看得到、自己寫的一定看得到、
- * 「同處室」的只有同處室的人看得到。
- * 資料層已經用查詢條件和安全規則擋過一次,這裡是第二道防線。
- */
-function canSeeNote(n) {
-  if ((n.ownerEmail || "").toLowerCase() === myEmail()) return true;
-  const scope = noteScopeOf(n);
-  if (scope === "all") return true;
-  if (scope === "dept") return !!n.dept && n.dept === state.member?.dept;
-  return false;
-}
+/** 誰看得到這則記事。判斷在 core.js,這裡只是把目前登入的人帶進去 */
+const canSeeNote = (n) => canSeeNoteFor(n, { email: myEmail(), dept: state.member?.dept });
 
 /**
  * 誰能編輯這個計畫:只有承辦人自己和管理員。
@@ -1058,7 +888,7 @@ function setTab(tab) {
     if (slot && rail.parentElement !== slot) slot.appendChild(rail);
   }
   showSortMenu(false);
-  if (tab === "calendar") renderCalendar();
+  if (tab === "calendar") { renderCalendar(); syncPushUI(); }
   // 切到搜尋就直接可以打字,不用再點一次輸入框
   if (tab === "search") $("#search-q").focus();
 }
@@ -3097,7 +2927,7 @@ formMember.addEventListener("submit", async (e) => {
 
 // 網址帶 ?demo=1 時直接灌假資料進畫面,不連 Firebase、不寫入任何東西。
 if (DEMO) {
-  const d = await import("./demo.js?v=48");
+  const d = await import("./demo.js?v=51");
   state.user = d.DEMO_USER;
   state.member = d.DEMO_MEMBER;
   state.plans = d.DEMO_PLANS;
@@ -3126,3 +2956,61 @@ if (DEMO) {
     "background:var(--accent,#0f766e);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.24);pointer-events:none";
   document.body.appendChild(tag);
 }
+
+
+/* ---------------- 手機提醒 ---------------- */
+
+const btnPush = $("#btn-push");
+const pushHint = $("#push-hint");
+
+/** 把按鈕與說明文字對齊這台裝置目前的狀態 */
+async function syncPushUI() {
+  if (!btnPush) return;
+  const s = pushSupport();
+
+  // 支援不了就不要給一顆按了也沒用的按鈕,直接把原因寫出來
+  if (!s.ok) {
+    btnPush.hidden = true;
+    pushHint.hidden = false;
+    pushHint.textContent = `手機提醒:${s.why}`;
+    return;
+  }
+
+  const sub = await currentSubscription().catch(() => null);
+  btnPush.hidden = false;
+  btnPush.setAttribute("aria-pressed", sub ? "true" : "false");
+  btnPush.classList.toggle("btn-primary", !sub);
+  btnPush.textContent = sub ? "🔔 已開啟手機提醒" : "🔔 開啟手機提醒";
+  pushHint.hidden = false;
+  pushHint.textContent = sub
+    ? "每天早上會把今天要注意的事整理成一則通知。這個開關只對這一台裝置有效,換手機要再開一次。"
+    : "開啟後,每天早上會把逾期、公文卡關、快到期的結算和今天的記事整理成一則通知送到這台裝置。";
+}
+
+btnPush?.addEventListener("click", async () => {
+  if (demoBlocked()) return;
+  btnPush.disabled = true;
+  try {
+    const on = btnPush.getAttribute("aria-pressed") === "true";
+    if (on) {
+      const endpoint = await disablePush();
+      if (endpoint) await deleteDoc(doc(db, "pushSubs", await endpointId(endpoint)));
+      toast("已關閉這台裝置的手機提醒", "good");
+    } else {
+      const rec = await enablePush();
+      await setDoc(doc(db, "pushSubs", await endpointId(rec.endpoint)), {
+        ...rec,
+        ownerEmail: myEmail(),
+        dept: state.member?.dept || "",
+        ...stamp()
+      });
+      toast("開好了,明天早上開始會收到通知", "good");
+    }
+  } catch (err) {
+    // 這裡的訊息是寫給老師看的(push.js 丟出來的都是中文白話),直接顯示
+    toast(err.message || "設定失敗", "error");
+  } finally {
+    btnPush.disabled = false;
+    syncPushUI();
+  }
+});

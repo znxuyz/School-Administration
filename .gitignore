@@ -1,0 +1,6 @@
+# 排程程式的套件,裝了就有,不進版本庫
+node_modules/
+
+# 服務帳號金鑰絕對不能進版本庫 —— 它繞過所有安全規則
+*service-account*.json
+*serviceAccount*.json

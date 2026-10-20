@@ -38,6 +38,24 @@ export function planDeliveries({ allowlist = [], plans = [], notes = [], subs = 
 }
 
 /**
+ * 試跑用:不管有沒有登記裝置,把「名單上每個人今天會收到什麼」全部算一遍。
+ *
+ * 為什麼需要這個:今天剛好沒事的話,正式跑起來也是一片「沒事可提醒」,
+ * 分不出來是「真的沒事」還是「哪裡接錯了」。先看得到內容,
+ * 才知道等一下手機該收到什麼、沒收到該往哪裡查。
+ */
+export function previewAll({ allowlist = [], plans = [], notes = [],
+                             today = todayStr() } = {}) {
+  return allowlist.map((m) => {
+    const email = (m.id || m.email || "").toLowerCase();
+    const items = remindersFor({
+      member: { email, dept: m.dept || "" }, plans, notes, today
+    });
+    return { email, name: m.name || "", dept: m.dept || "", items, payload: notificationFor(items) };
+  });
+}
+
+/**
  * VAPID 規格要一個聯絡方式(mailto: 或 https:),推播服務出問題時用它找寄件人。
  *
  * 這裡刻意寫得很寬容:直接把打錯的值丟給 web-push 會整支程式當掉,

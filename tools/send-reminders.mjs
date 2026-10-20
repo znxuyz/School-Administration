@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 
 import { todayStr } from "../assets/core.js";
-import { planDeliveries, vapidSubject } from "./deliveries.mjs";
+import { planDeliveries, previewAll, vapidSubject } from "./deliveries.mjs";
 
 // 送出的部分才需要這兩個套件(npm install 之後才有)
 const { initializeApp, cert } = await import("firebase-admin/app");
@@ -54,6 +54,21 @@ async function main() {
 
   // 「誰該收到什麼」是純邏輯,抽出去才測得到(見 test/deliveries.test.mjs)
   const deliveries = planDeliveries({ allowlist, plans, notes, subs, today: TODAY });
+
+  // 試跑時把名單上每個人今天會收到的內容都印出來 ——
+  // 還沒有人登記裝置的階段,這是唯一能確認「接得對不對」的方法
+  if (DRY) {
+    console.log("\n── 今天每個人會收到什麼(不管有沒有登記裝置)──");
+    const 台數 = (e) => subs.filter((s) => (s.ownerEmail || "").toLowerCase() === e).length;
+    for (const r of previewAll({ allowlist, plans, notes, today: TODAY })) {
+      const 裝置 = 台數(r.email);
+      const 誰 = `${r.name || r.email}${r.dept ? `(${r.dept})` : ""}・${裝置} 台裝置`;
+      if (!r.payload) { console.log(`\n${誰}\n  今天沒事`); continue; }
+      console.log(`\n${誰}\n  標題:${r.payload.title}`);
+      r.payload.body.split("\n").forEach((l) => console.log(`  ・${l}`));
+    }
+    console.log("\n────────────────────────────────────\n");
+  }
 
   // 聯絡方式打錯不該讓整天的通知全部發不出去,所以先過一道寬容的處理
   const { subject, warn } = vapidSubject(process.env.VAPID_SUBJECT);

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>產生推播金鑰 — 行政工作進度追蹤系統</title>
+<!--
+  手機提醒用的「寄件人身分」金鑰產生器。
+
+  為什麼做成一個網頁:產金鑰本來要在電腦上打指令,
+  但這個系統是在瀏覽器裡維護的,不該為了設定一次就要先裝一套開發環境。
+
+  金鑰是用瀏覽器內建的 Web Crypto 在「你這台電腦上」算出來的,
+  沒有送到任何伺服器,這個頁面也沒有連外。關掉頁面就沒了,所以要先複製走。
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 32px 20px 80px;
+    font: 15px/1.7 system-ui, "Noto Sans TC", sans-serif;
+    max-width: 760px; margin-inline: auto;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 6px; }
+  .lead { color: #666; margin: 0 0 28px; }
+  @media (prefers-color-scheme: dark) { .lead { color: #aaa; } }
+
+  button {
+    font: inherit; cursor: pointer;
+    padding: 11px 20px; border-radius: 9px;
+    border: 1px solid #0c7d70; background: #0c7d70; color: #fff;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.ghost { background: none; color: inherit; border-color: currentColor; opacity: .75; }
+
+  .key { margin: 26px 0; padding: 16px 18px; border-radius: 12px; border: 1px solid; }
+  .key h2 { font-size: 1rem; margin: 0 0 4px; }
+  .key p { margin: 0 0 12px; font-size: .88rem; }
+  .pub { border-color: #0c7d70; background: color-mix(in srgb, #0c7d70 7%, transparent); }
+  .sec { border-color: #d03b3b; background: color-mix(in srgb, #d03b3b 7%, transparent); }
+
+  code.out {
+    display: block; padding: 11px 13px; border-radius: 8px;
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    font-family: ui-monospace, "JetBrains Mono", monospace;
+    font-size: .82rem; word-break: break-all; line-height: 1.55;
+    user-select: all;
+  }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .ok { color: #0c7d70; font-size: .85rem; }
+  ol { padding-left: 1.3em; }
+  li { margin-bottom: 8px; }
+  .warn {
+    border-left: 3px solid #d03b3b; padding: 2px 0 2px 14px; margin: 20px 0;
+    font-size: .9rem;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<h1>產生推播金鑰</h1>
+<p class="lead">
+  手機提醒要用的一組金鑰。按下按鈕就會在<strong>你這台電腦上</strong>算出來 ——
+  不會送到任何地方,這個頁面也沒有連外。
+</p>
+
+<button id="go">產生金鑰</button>
+
+<div id="result" hidden>
+  <div class="key pub">
+    <h2>① 公鑰(可以公開)</h2>
+    <p>貼進 <code>assets/config.js</code> 的 <code>VAPID_PUBLIC_KEY</code>,也要填進 GitHub 的 Variables。</p>
+    <code class="out" id="pub"></code>
+    <div class="row">
+      <button class="ghost" data-copy="pub">複製公鑰</button>
+      <span class="ok" id="pub-ok" hidden>已複製</span>
+    </div>
+  </div>
+
+  <div class="key sec">
+    <h2>② 私鑰(機密,只貼進 GitHub Secrets)</h2>
+    <p>
+      <strong>不要</strong>貼進程式碼、不要傳給任何人(包括 AI 對話)。
+      拿到它就能冒充這個系統對全校老師發通知。
+    </p>
+    <code class="out" id="priv"></code>
+    <div class="row">
+      <button class="ghost" data-copy="priv">複製私鑰</button>
+      <span class="ok" id="priv-ok" hidden>已複製</span>
+    </div>
+  </div>
+
+  <div class="warn">
+    這兩串<strong>關掉頁面就沒了</strong>,也沒有存在任何地方。
+    先照下面的步驟貼好,再關視窗。真的弄丟就重產一組,
+    但重產會讓已經開啟提醒的人全部失效,要請他們再開一次。
+  </div>
+
+  <h2 style="font-size:1.05rem">接下來</h2>
+  <ol>
+    <li><strong>公鑰</strong> → 填進 GitHub repo 的 Settings → Secrets and variables → Actions →
+        Variables 分頁 → New repository variable,名稱 <code>VAPID_PUBLIC_KEY</code></li>
+    <li><strong>公鑰</strong> → 也要貼進 <code>assets/config.js</code> 的 <code>VAPID_PUBLIC_KEY</code>
+        (這一步可以直接在 GitHub 網頁上編輯)</li>
+    <li><strong>私鑰</strong> → 同一個設定頁的 Secrets 分頁 → New repository secret,
+        名稱 <code>VAPID_PRIVATE_KEY</code></li>
+  </ol>
+  <p style="font-size:.9rem">完整步驟見 README 的〈手機提醒〉。</p>
+</div>
+
+<p id="err" class="warn" hidden></p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+const b64url = (bytes) =>
+  btoa(String.fromCharCode(...new Uint8Array(bytes)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+$("go").addEventListener("click", async () => {
+  try {
+    // P-256。Web Push 的 VAPID 規格就是指定這條曲線。
+    const kp = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+
+    // 公鑰要未壓縮的點格式(65 bytes、0x04 開頭),raw 匯出就是這個
+    const pub = b64url(await crypto.subtle.exportKey("raw", kp.publicKey));
+    // 私鑰要 32 bytes 的純量;JWK 的 d 本來就是 base64url,直接用
+    const priv = (await crypto.subtle.exportKey("jwk", kp.privateKey)).d;
+
+    $("pub").textContent = pub;
+    $("priv").textContent = priv;
+    $("result").hidden = false;
+    $("go").textContent = "重新產生一組";
+    $("err").hidden = true;
+  } catch (e) {
+    $("err").hidden = false;
+    $("err").textContent = "產不出來:" + e.message
+      + "。這個頁面要用 https 或 localhost 開啟才有 Web Crypto。";
+  }
+});
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-copy]");
+  if (!btn) return;
+  const id = btn.dataset.copy;
+  try {
+    await navigator.clipboard.writeText($(id).textContent);
+  } catch {
+    // 瀏覽器擋了剪貼簿就退而求其次:把文字選起來讓他自己按 Ctrl+C
+    const r = document.createRange();
+    r.selectNodeContents($(id));
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  }
+  $(id + "-ok").hidden = false;
+  setTimeout(() => { $(id + "-ok").hidden = true; }, 2000);
+});
+</script>
+</body>
+</html>

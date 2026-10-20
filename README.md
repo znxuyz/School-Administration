@@ -657,43 +657,123 @@ Android / Chrome 沒有這個限制。
 判斷「什麼叫到期、什麼叫卡關」的程式(`assets/core.js`)是**網頁和排程共用同一份**,
 所以通知說的話和畫面上看到的一定一致。
 
-#### 設定步驟(四步,約十分鐘)
+#### 設定步驟
 
-**1. 產生推播金鑰**
+**完全不用安裝任何東西,也不用打指令**,整段都在瀏覽器裡做。
+大約十分鐘。照順序做,每一步都有確切要點哪裡。
 
-```bash
-npm install
-npm run vapid
+---
+
+**第 1 步 — 產生金鑰**
+
+開這個網址(把 `<帳號>` 換成你的 GitHub 帳號):
+
+```
+https://<帳號>.github.io/School-Administration/tools/vapid.html
 ```
 
-會印出一組公鑰和私鑰。
+按「**產生金鑰**」,會出現兩串字:
 
-**2. 公鑰貼進程式**
+- **公鑰**(綠色框)— 可以公開,等一下要用兩次
+- **私鑰**(紅色框)— 機密,等一下只貼進 GitHub Secrets 一次
 
-`assets/config.js` 的 `VAPID_PUBLIC_KEY`,然後執行 `./bump.sh` 推上去。
-留空的話畫面上不會出現開關,只會顯示「還沒設定推播金鑰」。
+金鑰是在**你這台電腦的瀏覽器裡**算出來的,沒有送到任何地方。
+⚠️ **先別關這個分頁**,兩串都貼好再關 —— 關掉就沒了。
 
-**3. 拿 Firebase 服務帳號金鑰**
+---
 
-Firebase 主控台 → ⚙️ 專案設定 → **服務帳戶** → **產生新的私密金鑰** → 下載 JSON。
+**第 2 步 — 公鑰貼進程式**
 
-> ⚠️ 這把鑰匙**繞過所有 Firestore 安全規則**,拿到就能讀寫全部資料。
-> 只放 GitHub Secrets,**不要**進版本庫(`.gitignore` 已經擋了常見檔名)、不要貼到聊天室。
-> 「誰看得到什麼」在 `tools/deliveries.mjs` 裡自己守住,有測試盯著。
+在 GitHub 網頁上直接改:
 
-**4. 填進 GitHub**
+1. 開 repo → 點進 `assets` → 點進 `config.js`
+2. 右上角的**鉛筆圖示 ✏️**(Edit this file)
+3. 找到這一行(大約在第 60 行):
+   ```js
+   export const VAPID_PUBLIC_KEY = "";
+   ```
+   把公鑰貼進那對引號中間
+4. 右上角綠色的 **Commit changes…** → 再按一次 **Commit changes**
 
-Repo → Settings → Secrets and variables → Actions:
+> 懶得自己改的話:**公鑰不是機密,直接貼給我**,我幫你改好推上去。
+> 私鑰不要給我,也不要給任何人。
 
-| 類型 | 名稱 | 內容 |
-|---|---|---|
-| Secret | `FIREBASE_SERVICE_ACCOUNT` | 第 3 步那個 JSON **整包**貼進去 |
-| Secret | `VAPID_PRIVATE_KEY` | 第 1 步的私鑰 |
-| Variable | `VAPID_PUBLIC_KEY` | 第 1 步的公鑰(和 config.js 裡那串一樣) |
-| Variable | `VAPID_SUBJECT` | `mailto:` 加上管理員信箱(選填,推播服務出問題時會寄信來) |
+---
 
-**先別等隔天**:Actions 分頁 → 每日提醒 → Run workflow,
-第一次保持「只看會送給誰,不真的送出」勾著,確認名單跑得出來再取消勾選真的送一次。
+**第 3 步 — 拿 Firebase 服務帳號金鑰**
+
+這把鑰匙是給排程程式讀資料用的。
+
+1. 開 [Firebase 主控台](https://console.firebase.google.com/) → 點進你的專案
+2. 左上角「專案總覽」旁邊的**齒輪 ⚙️** → **專案設定**
+3. 上方分頁選 **服務帳戶**
+4. 按 **產生新的私密金鑰** → 彈出視窗再按 **產生金鑰**
+5. 瀏覽器會下載一個 `.json` 檔
+
+> ⚠️ 這個 JSON **繞過所有 Firestore 安全規則**,拿到就能讀寫全部資料。
+> 只貼進 GitHub Secrets,**不要**上傳到任何地方、不要貼給我。貼完就把下載的檔案刪掉。
+
+---
+
+**第 4 步 — 三個值填進 GitHub**
+
+1. 開 repo → 上方 **Settings** 分頁
+2. 左邊選單找 **Secrets and variables** → 點開 → **Actions**
+
+這頁有兩個分頁,**Secrets** 和 **Variables**,要分開填:
+
+在 **Secrets** 分頁,按 **New repository secret**,填兩筆:
+
+| Name | Secret |
+|---|---|
+| `FIREBASE_SERVICE_ACCOUNT` | 第 3 步那個 JSON 檔,用記事本打開,**整個內容**複製貼上(含最外面的大括號) |
+| `VAPID_PRIVATE_KEY` | 第 1 步紅色框那串私鑰 |
+
+切到 **Variables** 分頁,按 **New repository variable**,填兩筆:
+
+| Name | Value |
+|---|---|
+| `VAPID_PUBLIC_KEY` | 第 1 步綠色框那串公鑰(和第 2 步貼進 config.js 的同一串) |
+| `VAPID_SUBJECT` | `mailto:` 加上你的信箱,例如 `mailto:abc@chc.edu.tw`(選填) |
+
+---
+
+**第 5 步 — 先試跑,確認沒問題再真的送**
+
+1. 開 repo → 上方 **Actions** 分頁
+2. 左邊選 **每日提醒**
+3. 右邊 **Run workflow** → 保持「只看會送給誰,不真的送出」**打勾** → 按 **Run workflow**
+4. 等十幾秒,重新整理,點進那一筆執行紀錄看輸出
+
+看到類似這樣就對了:
+
+```
+2026-10-20:名單 5 人、計畫 11 件、記事 3 則、已登記裝置 0 台(試跑)
+送出 0 則、沒事可提醒 0 台、清掉失效的 0 台
+```
+
+「已登記裝置 0 台」是正常的 —— 還沒有人開啟提醒。
+
+---
+
+**第 6 步 — 用手機開啟提醒**
+
+1. 用手機開這個系統並登入
+2. **iPhone 一定要先「加到主畫面」**:Safari 下方的分享鈕 → 加入主畫面 →
+   **從主畫面的圖示重新打開**(直接用 Safari 開收不到)
+3. 進「行事曆」分頁 → 按 **🔔 開啟手機提醒** → 允許通知
+
+回到第 5 步再跑一次(這次**取消**打勾,真的送出),手機應該就會收到。
+之後每個上班日早上 06:30 自己送。
+
+#### 排程沒有自己跑?
+
+- `schedule` 只會從 repo 的**預設分支**執行。現在的預設分支是
+  `claude/admin-workflow-tracker-8cpkxt`,workflow 就在上面,所以沒問題 ——
+  但如果之後改了預設分支,要確認 `.github/workflows/reminders.yml` 也在新的預設分支上
+- GitHub 的排程尖峰時會延遲,等到 07:30 還沒來是正常的
+- repo 連續 60 天沒有任何新 commit,GitHub 會自動停掉排程,
+  到時候 Actions 分頁會出現一個按鈕讓你重新啟用
 
 #### 想改什麼
 

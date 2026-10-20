@@ -250,26 +250,43 @@ for (const [name, opts] of 情境) {
 console.log("\n【手機提醒】");
 {
   const { b, p, errs } = await open({ scheme: "light" });
-  await p.click('.tab[data-tab="calendar"]');
-  await p.waitForTimeout(600);
+
+  const 看狀態 = async () => {
+    await p.click('.tab[data-tab="mine"]');
+    await p.click('.tab[data-tab="calendar"]');     // 切回去才會重新判斷
+    await p.waitForTimeout(500);
+    return p.evaluate(() => ({
+      按鈕顯示: !document.querySelector("#btn-push")?.hidden,
+      按鈕字: document.querySelector("#btn-push")?.textContent?.trim() || "",
+      提示: document.querySelector("#push-hint")?.textContent?.trim() || ""
+    }));
+  };
 
   const 設了金鑰 = await p.evaluate(async () => {
     const c = await import("./assets/config.js?probe=1");
     return !!c.VAPID_PUBLIC_KEY;
   });
-  const 狀態 = await p.evaluate(() => ({
-    按鈕顯示: !document.querySelector("#btn-push")?.hidden,
-    提示: document.querySelector("#push-hint")?.textContent?.trim() || ""
-  }));
+  ok("config.js 裡有填推播公鑰", 設了金鑰,
+     設了金鑰 ? "" : "沒填的話全校都收不到提醒,見 README〈手機提醒〉");
 
-  if (設了金鑰) {
-    // 設好金鑰之後要給得出按鈕(headless 下不會真的訂閱,只看按鈕在不在)
-    ok("設了金鑰就有開關可以按", 狀態.按鈕顯示, JSON.stringify(狀態));
-  } else {
-    // 還沒設金鑰時,不要留一顆按了也沒反應的按鈕,而且要講清楚原因
-    ok("還沒設金鑰時不給沒用的按鈕", !狀態.按鈕顯示, JSON.stringify(狀態));
-    ok("而且要說清楚為什麼", /還沒設定推播金鑰/.test(狀態.提示), 狀態.提示);
-  }
+  // ① 瀏覽器擋掉通知時(很多老師會不小心按到「封鎖」):
+  //    不要留一顆按了也沒用的按鈕,而且要講得出怎麼救
+  const 被擋 = await 看狀態();
+  ok("通知被擋住時不給沒用的按鈕", !被擋.按鈕顯示, JSON.stringify(被擋));
+  ok("而且要說得出怎麼救", /擋住|設定/.test(被擋.提示), 被擋.提示);
+
+  // ② 允許通知時該放行。
+  //    headless 的 Chromium 一律把通知權限鎖在 denied,Playwright 給權限也沒用,
+  //    所以改成直接問判斷函式本身 —— 把權限狀態蓋掉再問一次。
+  const 判斷 = await p.evaluate(async () => {
+    const m = await import("./assets/push.js?probe=1");
+    const 擋住 = m.pushSupport();
+    Object.defineProperty(Notification, "permission", { get: () => "default", configurable: true });
+    return { 擋住, 允許: m.pushSupport() };
+  });
+  ok("權限是 denied 時判定為不能用", !判斷.擋住.ok, JSON.stringify(判斷.擋住));
+  ok("權限正常時判定為可以用", 判斷.允許.ok, JSON.stringify(判斷.允許));
+
   ok("主控台沒有錯誤", errs.length === 0, errs.join(" | "));
   await b.close();
 }

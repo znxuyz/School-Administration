@@ -16,10 +16,10 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=56";
+} from "./config.js?v=58";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=56";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=58";
 
 // 計畫 / 步驟 / 記事的判斷邏輯。和雲端發手機提醒的程式共用同一份 ——
 // 畫面說「明天到期」,通知就不能說別的。
@@ -30,11 +30,11 @@ import {
   looksIncoming, isIncoming, isWaiting, daysWaiting, documentsWaiting,
   sentAtOf, daysAway, isStuck, hasStuckDoc, documentsOut,
   NOTE_SCOPES, noteScopeOf, canSeeNote as canSeeNoteFor
-} from "./core.js?v=56";
+} from "./core.js?v=58";
 
 // 手機提醒:這裡只負責跟瀏覽器要權限、把裝置登記起來。
 // 真正在早上送出通知的是 GitHub Actions,見 tools/send-reminders.mjs。
-import { pushSupport, currentSubscription, enablePush, disablePush, endpointId } from "./push.js?v=56";
+import { pushSupport, currentSubscription, enablePush, disablePush, endpointId } from "./push.js?v=58";
 
 // 預覽模式:網址帶 ?demo=1 時跳過登入,直接用假資料把每一頁畫出來。
 // 任何寫入都會被擋下,只是給人看畫面用的 —— 改版時對照畫面、
@@ -2927,7 +2927,7 @@ formMember.addEventListener("submit", async (e) => {
 
 // 網址帶 ?demo=1 時直接灌假資料進畫面,不連 Firebase、不寫入任何東西。
 if (DEMO) {
-  const d = await import("./demo.js?v=56");
+  const d = await import("./demo.js?v=58");
   state.user = d.DEMO_USER;
   state.member = d.DEMO_MEMBER;
   state.plans = d.DEMO_PLANS;
@@ -2963,7 +2963,13 @@ if (DEMO) {
 const btnPush = $("#btn-push");
 const pushHint = $("#push-hint");
 
-/** 把按鈕與說明文字對齊這台裝置目前的狀態 */
+/**
+ * 把按鈕與說明文字對齊這台裝置目前的狀態。
+ *
+ * 要同時看兩件事:瀏覽器有沒有訂閱、以及這筆訂閱有沒有真的存進資料庫。
+ * 只看瀏覽器的話,寫入被安全規則擋掉時按鈕還是會顯示「已開啟」——
+ * 但雲端那支程式根本看不到這台裝置,到了早上什麼都不會來。
+ */
 async function syncPushUI() {
   if (!btnPush) return;
   const s = pushSupport();
@@ -2977,14 +2983,33 @@ async function syncPushUI() {
   }
 
   const sub = await currentSubscription().catch(() => null);
+  // 讀自己的那一筆。讀不到(被規則擋、或離線)就當作沒登記成功,
+  // 寧可叫他再按一次,也不要讓他以為設好了而其實沒有。
+  const 登記了 = sub
+    ? await getDoc(doc(db, "pushSubs", await endpointId(sub.endpoint)))
+        .then((d) => d.exists()).catch(() => false)
+    : false;
+
   btnPush.hidden = false;
-  btnPush.setAttribute("aria-pressed", sub ? "true" : "false");
-  btnPush.classList.toggle("btn-primary", !sub);
-  btnPush.textContent = sub ? "🔔 已開啟手機提醒" : "🔔 開啟手機提醒";
+  btnPush.disabled = false;
+  btnPush.setAttribute("aria-pressed", String(登記了));
+  btnPush.classList.toggle("btn-primary", !登記了);
   pushHint.hidden = false;
-  pushHint.textContent = sub
-    ? "每天早上會把今天要注意的事整理成一則通知。這個開關只對這一台裝置有效,換手機要再開一次。"
-    : "開啟後,每天早上會把逾期、公文卡關、快到期的結算和今天的記事整理成一則通知送到這台裝置。";
+
+  if (登記了) {
+    btnPush.textContent = "🔔 已開啟手機提醒";
+    pushHint.textContent = "每天早上會把今天要注意的事整理成一則通知。"
+      + "這個開關只對這一台裝置有效,換手機要再開一次。";
+  } else if (sub) {
+    // 瀏覽器訂閱了但資料庫沒有這筆 —— 最常見的原因是安全規則還沒更新
+    btnPush.textContent = "🔔 重新開啟手機提醒";
+    pushHint.textContent = "這台裝置還沒登記成功,所以收不到通知。再按一次試試;"
+      + "如果一直失敗,多半是 Firestore 安全規則還沒更新(見 README〈手機提醒〉)。";
+  } else {
+    btnPush.textContent = "🔔 開啟手機提醒";
+    pushHint.textContent = "開啟後,每天早上會把逾期、公文卡關、快到期的結算"
+      + "和今天的記事整理成一則通知送到這台裝置。";
+  }
 }
 
 btnPush?.addEventListener("click", async () => {
@@ -2998,17 +3023,28 @@ btnPush?.addEventListener("click", async () => {
       toast("已關閉這台裝置的手機提醒", "good");
     } else {
       const rec = await enablePush();
-      await setDoc(doc(db, "pushSubs", await endpointId(rec.endpoint)), {
-        ...rec,
-        ownerEmail: myEmail(),
-        dept: state.member?.dept || "",
-        ...stamp()
-      });
+      try {
+        await setDoc(doc(db, "pushSubs", await endpointId(rec.endpoint)), {
+          ...rec,
+          ownerEmail: myEmail(),
+          dept: state.member?.dept || "",
+          ...stamp()
+        });
+      } catch (dbErr) {
+        // 存不進資料庫的話,瀏覽器這邊的訂閱留著也沒用 —— 雲端看不到它。
+        // 退訂回去,狀態才不會變成「看起來開了其實沒開」。
+        await disablePush().catch(() => {});
+        throw dbErr;
+      }
       toast("開好了,明天早上開始會收到通知", "good");
     }
   } catch (err) {
-    // 這裡的訊息是寫給老師看的(push.js 丟出來的都是中文白話),直接顯示
-    toast(err.message || "設定失敗", "error");
+    // Firebase 丟回來的是英文代碼,要翻成老師看得懂、而且知道該找誰的話
+    const msg = err?.code === "permission-denied"
+      || /insufficient permissions/i.test(err?.message || "")
+      ? "資料庫不讓這台裝置登記。請管理員把 firestore.rules 重新貼到 Firebase 主控台並發布(見 README〈手機提醒〉)。"
+      : (err.message || "設定失敗");
+    toast(msg, "error");
   } finally {
     btnPush.disabled = false;
     syncPushUI();

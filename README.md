@@ -734,7 +734,23 @@ https://<帳號>.github.io/School-Administration/tools/vapid.html
 | Name | Value |
 |---|---|
 | `VAPID_PUBLIC_KEY` | 第 1 步綠色框那串公鑰(和第 2 步貼進 config.js 的同一串) |
-| `VAPID_SUBJECT` | `mailto:` 加上你的信箱,例如 `mailto:abc@chc.edu.tw`(選填) |
+| `VAPID_SUBJECT` | `mailto:` 加上你的信箱,例如 `mailto:abc@chc.edu.tw`(**選填**,見下方說明) |
+
+> **`VAPID_SUBJECT` 填不填差在哪?**
+>
+> 這是推播規格要求的「寄件人聯絡方式」。Google / Apple 的推播伺服器如果發現
+> 這個系統的請求出了問題(大量失敗、設定錯誤、被檢舉),會照這個地址聯絡。
+>
+> - **不填** — 照常運作,收得到通知。只是用的是預設的 `mailto:admin@example.com`,
+>   一個不存在的範例信箱,對方真要找你就找不到
+> - **填了** — 一樣運作,但出事時聯絡得到你
+>
+> **對「收不收得到通知」完全沒有影響**,推播服務不會去驗證這個地址存不存在。
+> 填了只是留個後路。
+>
+> 格式要寫成 `mailto:abc@chc.edu.tw`。只填 `abc@chc.edu.tw` 的話系統會自動補上
+> `mailto:` 並在執行紀錄裡提醒你;填成完全看不懂的東西會退回預設值,
+> **不會讓當天的通知整批發不出去**。
 
 ---
 

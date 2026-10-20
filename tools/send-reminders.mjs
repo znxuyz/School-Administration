@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 
 import { todayStr } from "../assets/core.js";
-import { planDeliveries } from "./deliveries.mjs";
+import { planDeliveries, vapidSubject } from "./deliveries.mjs";
 
 // 送出的部分才需要這兩個套件(npm install 之後才有)
 const { initializeApp, cert } = await import("firebase-admin/app");
@@ -55,12 +55,10 @@ async function main() {
   // 「誰該收到什麼」是純邏輯,抽出去才測得到(見 test/deliveries.test.mjs)
   const deliveries = planDeliveries({ allowlist, plans, notes, subs, today: TODAY });
 
-  webpush.setVapidDetails(
-    // mailto: 是 VAPID 規格要的聯絡方式,推播服務出問題時會寄信到這裡
-    process.env.VAPID_SUBJECT || "mailto:admin@example.com",
-    env("VAPID_PUBLIC_KEY"),
-    env("VAPID_PRIVATE_KEY")
-  );
+  // 聯絡方式打錯不該讓整天的通知全部發不出去,所以先過一道寬容的處理
+  const { subject, warn } = vapidSubject(process.env.VAPID_SUBJECT);
+  if (warn) console.warn(`  ⚠ ${warn}`);
+  webpush.setVapidDetails(subject, env("VAPID_PUBLIC_KEY"), env("VAPID_PRIVATE_KEY"));
 
   let 送出 = 0, 清掉 = 0;
   const 跳過 = subs.length - deliveries.reduce((n, d) => n + d.devices.length, 0);

@@ -22,6 +22,12 @@ on:
         description: 只看會送給誰,不真的送出
         type: boolean
         default: true
+      test_push:
+        # 剛設定好的時候今天通常剛好沒事,這時候送出去也是零則,
+        # 分不出來是「真的沒事」還是「推播根本不通」。這個選項把兩件事分開。
+        description: 送一則測試通知給所有已登記的裝置(要同時取消上面的勾)
+        type: boolean
+        default: false
 
 jobs:
   send:
@@ -43,3 +49,4 @@ jobs:
           VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
           VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
           DRY_RUN: ${{ inputs.dry_run == true && '1' || '' }}
+          TEST_PUSH: ${{ inputs.test_push == true && '1' || '' }}

@@ -22,6 +22,10 @@ const { getFirestore } = await import("firebase-admin/firestore");
 const webpush = (await import("web-push")).default;
 
 const DRY = process.env.DRY_RUN === "1";
+// 測試模式:不管今天有沒有事,都送一則固定內容給所有已登記的裝置。
+// 用途是把「推播這條路通不通」和「今天有沒有事」分開來看 ——
+// 剛設定好的時候通常今天剛好沒事,不這樣做根本驗不出來。
+const TEST = process.env.TEST_PUSH === "1";
 const TODAY = process.env.TODAY || todayStr();
 
 function env(name) {
@@ -50,14 +54,33 @@ async function main() {
     ["allowlist", "plans", "notes", "pushSubs"].map(全部));
 
   console.log(`${TODAY}:名單 ${allowlist.length} 人、計畫 ${plans.length} 件、`
-    + `記事 ${notes.length} 則、已登記裝置 ${subs.length} 台${DRY ? "(試跑)" : ""}`);
+    + `記事 ${notes.length} 則、已登記裝置 ${subs.length} 台`
+    + `${DRY ? "(試跑)" : ""}${TEST ? "(測試通知)" : ""}`);
 
-  // 「誰該收到什麼」是純邏輯,抽出去才測得到(見 test/deliveries.test.mjs)
-  const deliveries = planDeliveries({ allowlist, plans, notes, subs, today: TODAY });
+  if (TEST && !subs.length) {
+    console.log("\n沒有任何已登記的裝置,所以沒有對象可以測。");
+    console.log("請先在手機上進「行事曆」分頁按「🔔 開啟手機提醒」。");
+    console.log("iPhone 要先把網站「加到主畫面」,再從主畫面的圖示打開才收得到。\n");
+    return;
+  }
+
+  // 「誰該收到什麼」是純邏輯,抽出去才測得到(見 test/deliveries.test.mjs)。
+  // 測試模式則略過判斷,直接發給每一台 —— 要測的是路通不通,不是內容對不對。
+  const deliveries = TEST
+    ? [...new Set(subs.map((s) => (s.ownerEmail || "").toLowerCase()))].filter(Boolean)
+        .map((email) => ({
+          email,
+          devices: subs.filter((s) => (s.ownerEmail || "").toLowerCase() === email),
+          payload: {
+            title: "測試通知",
+            body: `收到這則就代表手機提醒設定成功了。\n(${TODAY} 手動送出,不是每天的提醒)`
+          }
+        }))
+    : planDeliveries({ allowlist, plans, notes, subs, today: TODAY });
 
   // 試跑時把名單上每個人今天會收到的內容都印出來 ——
   // 還沒有人登記裝置的階段,這是唯一能確認「接得對不對」的方法
-  if (DRY) {
+  if (DRY && !TEST) {
     console.log("\n── 今天每個人會收到什麼(不管有沒有登記裝置)──");
     const 台數 = (e) => subs.filter((s) => (s.ownerEmail || "").toLowerCase() === e).length;
     for (const r of previewAll({ allowlist, plans, notes, today: TODAY })) {
@@ -79,7 +102,10 @@ async function main() {
   const 跳過 = subs.length - deliveries.reduce((n, d) => n + d.devices.length, 0);
 
   for (const { email, devices, payload } of deliveries) {
-    const body = JSON.stringify({ ...payload, tag: `daily-${TODAY}`, url: "./" });
+    // 測試通知用不同的 tag,才不會和當天真正的提醒互相蓋掉
+    const body = JSON.stringify({
+      ...payload, tag: TEST ? `test-${Date.now()}` : `daily-${TODAY}`, url: "./"
+    });
     console.log(`  ${email}(${devices.length} 台):${payload.title}`);
 
     for (const d of devices) {

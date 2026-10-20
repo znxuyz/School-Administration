@@ -16,10 +16,10 @@ import {
   STAGES, STAGE_IDS, STEP_SUGGESTIONS, TEMPLATES,
   ROLES, DEFAULT_ROLE, RECURRENCES, RECUR_LEAD_DAYS
   // ?v= 由 ./bump.sh 一併更新,否則瀏覽器會沿用快取裡的舊設定檔
-} from "./config.js?v=55";
+} from "./config.js?v=56";
 
 // 主題色(頂欄品牌圖示 → 選色面板)。只影響 CSS 變數,不動任何資料。
-import { initAccentPicker, initThemeToggle } from "./theme.js?v=55";
+import { initAccentPicker, initThemeToggle } from "./theme.js?v=56";
 
 // 計畫 / 步驟 / 記事的判斷邏輯。和雲端發手機提醒的程式共用同一份 ——
 // 畫面說「明天到期」,通知就不能說別的。
@@ -30,11 +30,11 @@ import {
   looksIncoming, isIncoming, isWaiting, daysWaiting, documentsWaiting,
   sentAtOf, daysAway, isStuck, hasStuckDoc, documentsOut,
   NOTE_SCOPES, noteScopeOf, canSeeNote as canSeeNoteFor
-} from "./core.js?v=55";
+} from "./core.js?v=56";
 
 // 手機提醒:這裡只負責跟瀏覽器要權限、把裝置登記起來。
 // 真正在早上送出通知的是 GitHub Actions,見 tools/send-reminders.mjs。
-import { pushSupport, currentSubscription, enablePush, disablePush, endpointId } from "./push.js?v=55";
+import { pushSupport, currentSubscription, enablePush, disablePush, endpointId } from "./push.js?v=56";
 
 // 預覽模式:網址帶 ?demo=1 時跳過登入,直接用假資料把每一頁畫出來。
 // 任何寫入都會被擋下,只是給人看畫面用的 —— 改版時對照畫面、
@@ -2927,7 +2927,7 @@ formMember.addEventListener("submit", async (e) => {
 
 // 網址帶 ?demo=1 時直接灌假資料進畫面,不連 Firebase、不寫入任何東西。
 if (DEMO) {
-  const d = await import("./demo.js?v=55");
+  const d = await import("./demo.js?v=56");
   state.user = d.DEMO_USER;
   state.member = d.DEMO_MEMBER;
   state.plans = d.DEMO_PLANS;

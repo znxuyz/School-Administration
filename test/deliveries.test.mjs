@@ -118,5 +118,29 @@ console.log("\n【聯絡方式打錯不能炸掉整天的通知】");
      JSON.stringify(各種亂填.map((v) => vapidSubject(v).subject)));
 }
 
+console.log("\n【排程的時間要對】");
+{
+  // 執行機器預設是 UTC。UTC 還是週日晚上的時候台灣已經是週一,
+  // 直接用機器的日期會讓「今天的記事」整整差一天 —— 這個坑踩過一次。
+  const { readFileSync } = await import("node:fs");
+  const yml = readFileSync(new URL("../.github/workflows/reminders.yml", import.meta.url), "utf8");
+
+  ok("workflow 有把時區釘在台灣", /TZ:\s*Asia\/Taipei/.test(yml),
+     "少了這行,排程算出來的「今天」會是 UTC 的日期");
+
+  const cron = yml.match(/- cron:\s*"([^"]+)"/)?.[1] || "";
+  ok("排程格式讀得出來", !!cron, cron);
+
+  const [分, 時, , , 星期] = cron.split(/\s+/);
+  const 台灣時 = (Number(時) + 8) % 24;
+  ok("換算成台灣時間是早上 8 點", 台灣時 === 8 && 分 === "0",
+     `cron「${cron}」→ 台灣 ${台灣時}:${分.padStart(2, "0")}`);
+
+  // UTC+8 之後沒有跨日的話,cron 的星期就等於台灣的星期
+  const 跨日 = Number(時) + 8 >= 24;
+  ok("星期沒有被跨日弄錯", !跨日 || /^[0-6]/.test(星期),
+     跨日 ? `UTC ${時} 點 +8 會跨到隔天,星期要跟著挪` : `沒跨日,星期(${星期})直接對應台灣`);
+}
+
 console.log(失敗 ? `\n有 ${失敗} 條沒過\n` : "\n全部通過\n");
 process.exit(失敗 ? 1 : 0);

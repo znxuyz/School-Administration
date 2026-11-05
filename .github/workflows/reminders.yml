@@ -12,9 +12,10 @@ name: 每日提醒
 
 on:
   schedule:
-    # UTC 22:30 = 台灣早上 06:30。GitHub 的 cron 一律看 UTC,
-    # 要改時間記得自己減八小時(跨日的話日期也要跟著調)。
-    - cron: "30 22 * * 0-4"   # 週日～週四的 UTC 晚上 = 台灣週一～週五早上
+    # 台灣早上 08:00 = UTC 00:00(台灣固定 UTC+8,沒有日光節約時間)。
+    # GitHub 的 cron 一律看 UTC,要改時間記得自己減八小時 ——
+    # 減完如果跨到前一天,星期幾也要跟著往前挪一天。
+    - cron: "0 0 * * 1-5"     # UTC 週一～週五 00:00 = 台灣週一～週五 08:00
   # 設定好之後先用這個按鈕手動跑一次,確認收得到再等隔天
   workflow_dispatch:
     inputs:
@@ -44,6 +45,10 @@ jobs:
 
       - run: node tools/send-reminders.mjs
         env:
+          # 執行機器預設是 UTC,直接用它的日期會算錯「今天」——
+          # 例如 UTC 還是週日晚上的時候,台灣已經是週一了。
+          # 這個系統服務的是台灣的學校,「今天」一律以台灣時間為準。
+          TZ: Asia/Taipei
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}

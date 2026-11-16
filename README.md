@@ -13,9 +13,15 @@
 
 ## 功能介紹影片
 
-[![功能介紹影片:2 分 22 秒](docs/demo-poster.jpg)](docs/demo.mp4)
+<video
+  src="https://znxuyz.github.io/School-Administration/docs/demo.mp4"
+  poster="https://znxuyz.github.io/School-Administration/docs/demo-poster.jpg"
+  controls playsinline preload="none" width="100%"></video>
 
-**▶ [點這裡播放(2 分 22 秒)](docs/demo.mp4)** —— 十三段實機操作畫面,附中文字幕。
+2 分 22 秒,十三段實機操作畫面,附中文字幕。
+上面那格如果沒出現播放器(有些地方看 README 不給放影片),
+就改點 **[▶ 播放頁面](https://znxuyz.github.io/School-Administration/docs/demo.html)**,
+或是直接[下載影片](docs/demo.mp4)。
 
 | 片段 | 內容 |
 |------|------|

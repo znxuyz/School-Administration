@@ -35,6 +35,30 @@
   h1 { font-size: clamp(26px, 4.4vw, 38px); letter-spacing: .03em; margin-bottom: 10px; }
   .lead { color: #9aa3ad; margin-bottom: 26px; font-size: 16px; }
 
+  .stage { position: relative; }
+
+  #unmute {
+    /* 放右上角,不要壓到畫面下緣燒死的字幕 */
+    position: absolute; top: 14px; right: 14px;
+    padding: 10px 18px; border-radius: 999px; cursor: pointer;
+    border: 0; background: rgba(15,138,124,.94); color: #fff;
+    font: inherit; font-size: 15px; font-weight: 600;
+    box-shadow: 0 8px 26px rgba(0,0,0,.5);
+  }
+  #unmute:hover { background: #12a594; }
+  /* 手機上播放器小,按鈕要跟著縮,不然整條橫在畫面上 */
+  @media (max-width: 560px) {
+    #unmute { top: 8px; right: 8px; padding: 7px 12px; font-size: 13px;
+              max-width: calc(100% - 16px); }
+  }
+
+  .oops {
+    margin-top: 14px; padding: 12px 16px; border-radius: 10px;
+    background: rgba(220,120,60,.12); border: 1px solid rgba(220,120,60,.35);
+    font-size: 14.5px; color: #e0c3ab;
+  }
+  .oops a { color: #ffb37a; }
+
   /* 播放器本身。大、置中、一打開就看得到控制列。 */
   video {
     width: 100%; display: block; border-radius: 14px;
@@ -87,11 +111,18 @@
   <h1>功能介紹影片</h1>
   <p class="lead">十三段實機操作畫面,附中文字幕。沒有旁白,開著喇叭或靜音看都可以。</p>
 
-  <!-- preload="none" + poster:還沒按播放之前不會先下載 9 MB -->
-  <video controls playsinline preload="none" poster="demo-poster.jpg">
-    <source src="demo.mp4" type="video/mp4">
-    你的瀏覽器不支援內嵌播放,<a href="demo.mp4">請直接下載影片</a>。
-  </video>
+  <!-- 從 README 點進來的人是來看影片的,所以一進來就開始播(見頁尾的 script) -->
+  <div class="stage">
+    <video id="v" controls playsinline preload="metadata" poster="demo-poster.jpg">
+      <source src="demo.mp4" type="video/mp4">
+      你的瀏覽器不支援內嵌播放,<a href="demo.mp4">請直接下載影片</a>。
+    </video>
+    <!-- 瀏覽器只肯靜音自動播放時才會冒出來 -->
+    <button id="unmute" hidden>🔇 已靜音播放中 · 點我開聲音</button>
+  </div>
+  <p id="oops" hidden class="oops">
+    這個瀏覽器放不動這支影片。<a href="demo.mp4" download>下載下來用播放器開</a>就可以了。
+  </p>
 
   <div class="meta">
     <span>2:22</span><span>1280 × 720</span><span>9.2 MB</span><span>中文字幕(內嵌)</span>
@@ -126,5 +157,49 @@
 
   <footer>行政工作進度追蹤系統 · 彰化縣和仁國小</footer>
 </div>
+
+<script>
+// 從 README 點進來的人就是要看影片,不該再按一次播放。
+//
+// 但瀏覽器預設擋「有聲音的自動播放」(Chrome、Safari、手機都擋),
+// 所以要分兩段:先試有聲的,被擋了就退成靜音播,
+// 同時給一顆明顯的按鈕讓人把聲音打開 —— 不要讓人以為影片壞了。
+(function () {
+  var v = document.getElementById("v");
+  var btn = document.getElementById("unmute");
+  var oops = document.getElementById("oops");
+  if (!v) return;
+
+  function 播不動() {          // 格式不支援、檔案掛了、使用者省電模式擋下來
+    btn.hidden = true;
+    oops.hidden = false;
+  }
+
+  function 靜音播() {
+    v.muted = true;
+    btn.hidden = false;        // 先把按鈕放出來,不要等 play() 回應
+    var p = v.play();
+    if (p && p.catch) p.catch(function () { btn.hidden = true; });
+  }
+
+  var p = v.play();
+  if (p && p.catch) p.catch(靜音播);
+
+  btn.addEventListener("click", function () {
+    v.muted = false;
+    v.volume = 1;
+    btn.hidden = true;
+  });
+  // 自己動手開聲音的話,按鈕就該收起來
+  v.addEventListener("volumechange", function () { if (!v.muted) btn.hidden = true; });
+
+  // <source> 的 error 不會往上冒泡,所以用捕獲階段接
+  v.addEventListener("error", 播不動, true);
+  // 保險:有些瀏覽器挑不到來源時安安靜靜什麼事件都不發
+  setTimeout(function () {
+    if (v.networkState === 3 /* NETWORK_NO_SOURCE */) 播不動();
+  }, 4000);
+})();
+</script>
 </body>
 </html>
